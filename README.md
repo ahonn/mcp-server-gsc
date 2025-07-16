@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ahonn-mcp-server-gsc-badge.png)](https://mseep.ai/app/ahonn-mcp-server-gsc)
+
 # Google Search Console MCP Server
 [![smithery badge](https://smithery.ai/badge/mcp-server-gsc)](https://smithery.ai/server/mcp-server-gsc)
 

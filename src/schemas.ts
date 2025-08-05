@@ -29,16 +29,17 @@ export const SearchAnalyticsSchema = GSCBaseSchema.extend({
     .enum(['auto', 'byNewsShowcasePanel', 'byProperty', 'byPage'])
     .optional()
     .describe('Type of aggregation, such as auto, byNewsShowcasePanel, byProperty, byPage'),
-  rowLimit: z.number().default(1000).describe('Maximum number of rows to return'),
+  rowLimit: z.number().min(1).max(25000).default(1000).describe('Maximum number of rows to return (up to 25,000 for enhanced performance)'),
   pageFilter: z.string().optional().describe('Filter by a specific page URL. Use with filterOperator.'),
   queryFilter: z.string().optional().describe('Filter by a specific query string. Use with filterOperator.'),
   countryFilter: z.string().optional().describe('Filter by a country using ISO 3166-1 alpha-3 code (e.g., USA, CHN).'),
   deviceFilter: z.enum(['DESKTOP', 'MOBILE', 'TABLET']).optional().describe('Filter by device type.'),
   filterOperator: z
-    .enum(['equals', 'contains', 'notEquals', 'notContains'])
+    .enum(['equals', 'contains', 'notEquals', 'notContains', 'includingRegex', 'excludingRegex'])
     .default('equals')
     .optional()
-    .describe('Operator for page and query filters. Defaults to "equals".'),
+    .describe('Operator for page and query filters. Defaults to "equals". Enhanced with regex support.'),
+  regexFilter: z.string().optional().describe('Advanced regex filter for intelligent query matching'),
 });
 
 export const IndexInspectSchema = GSCBaseSchema.extend({
@@ -89,5 +90,30 @@ export const SubmitSitemapSchema = z.object({
     .describe("The site's URL, including protocol. For example: http://www.example.com/"),
 });
 
+// Enhanced Quick Wins Detection Schema
+export const QuickWinsDetectionSchema = GSCBaseSchema.extend({
+  startDate: z.string().describe('Start date in YYYY-MM-DD format'),
+  endDate: z.string().describe('End date in YYYY-MM-DD format'),
+  minImpressions: z.number().default(50).describe('Minimum impressions threshold for quick wins'),
+  maxCtr: z.number().default(2.0).describe('Maximum CTR percentage for quick wins detection'),
+  positionRangeMin: z.number().default(4).describe('Minimum position for quick wins (default: 4)'),
+  positionRangeMax: z.number().default(10).describe('Maximum position for quick wins (default: 10)'),
+  estimatedClickValue: z.number().default(1.0).describe('Estimated value per click for ROI calculation'),
+  conversionRate: z.number().default(0.03).describe('Estimated conversion rate for ROI calculation'),
+});
+
+// Enhanced Search Analytics Schema with Quick Wins
+export const EnhancedSearchAnalyticsSchema = SearchAnalyticsSchema.extend({
+  enableQuickWins: z.boolean().default(false).describe('Enable automatic quick wins detection'),
+  quickWinsThresholds: QuickWinsDetectionSchema.pick({
+    minImpressions: true,
+    maxCtr: true,
+    positionRangeMin: true,
+    positionRangeMax: true,
+  }).optional().describe('Custom thresholds for quick wins detection'),
+});
+
 export type SearchAnalytics = z.infer<typeof SearchAnalyticsSchema>;
+export type EnhancedSearchAnalytics = z.infer<typeof EnhancedSearchAnalyticsSchema>;
+export type QuickWinsDetection = z.infer<typeof QuickWinsDetectionSchema>;
 export type IndexInspect = z.infer<typeof IndexInspectSchema>;

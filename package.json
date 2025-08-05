@@ -1,7 +1,7 @@
 {
   "name": "mcp-server-gsc",
   "version": "0.2.0",
-  "description": "A Model Context Protocol (MCP) server providing access to Google Search Console",
+  "description": "Enhanced Model Context Protocol server for Google Search Console with 25K row limit, regex filters, and automatic quick wins detection",
   "author": "Yuexun Jiang <yuexunjiang@gmail.com>",
   "license": "MIT",
   "type": "module",

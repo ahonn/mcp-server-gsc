@@ -1,7 +1,7 @@
 # Google Search Console MCP Server
 [![smithery badge](https://smithery.ai/badge/mcp-server-gsc)](https://smithery.ai/server/mcp-server-gsc)
 
-A Model Context Protocol (MCP) server providing access to Google Search Console.
+A Model Context Protocol (MCP) server providing comprehensive access to Google Search Console data with enhanced analytics capabilities.
 
 ### Sponsored by
 
@@ -11,8 +11,11 @@ A Model Context Protocol (MCP) server providing access to Google Search Console.
 
 ## Features
 
-- Search analytics data retrieval with dimensions support
-- Rich data analysis with customizable reporting periods
+- **Enhanced Search Analytics**: Retrieve up to 25,000 rows of performance data
+- **Advanced Filtering**: Support for regex patterns and multiple filter operators
+- **Quick Wins Detection**: Automatically identify optimization opportunities
+- **Rich Dimensions**: Query, page, country, device, and search appearance analysis
+- **Flexible Date Ranges**: Customizable reporting periods with historical data access
 
 ## Prerequisites
 
@@ -81,7 +84,7 @@ To obtain Google Search Console API credentials:
 
 ### search_analytics
 
-Get search performance data from Google Search Console with customizable parameters:
+Get comprehensive search performance data from Google Search Console with enhanced analytics capabilities.
 
 **Required Parameters:**
 
@@ -91,21 +94,42 @@ Get search performance data from Google Search Console with customizable paramet
 
 **Optional Parameters:**
 
-- `dimensions`: Comma-separated list (`query,page,country,device,searchAppearance`)
-- `type`: Search type (`web`, `image`, `video`, `news`)
+- `dimensions`: Comma-separated list (`query`, `page`, `country`, `device`, `searchAppearance`, `date`)
+- `type`: Search type (`web`, `image`, `video`, `news`, `discover`, `googleNews`)
 - `aggregationType`: Aggregation method (`auto`, `byNewsShowcasePanel`, `byProperty`, `byPage`)
-- `rowLimit`: Maximum rows to return (default: 1000)
+- `rowLimit`: Maximum rows to return (default: 1000, max: 25000)
+- `dataState`: Data freshness (`all` or `final`, default: `final`)
 
-**New Filter Parameters:**
+**Filter Parameters:**
 
-- `pageFilter`: Filter results by a specific page URL.
-- `queryFilter`: Filter results by a specific query string.
-- `countryFilter`: Filter by a country using ISO 3166-1 alpha-3 code (e.g., `USA`, `CHN`).
-- `deviceFilter`: Filter by device type (`DESKTOP`, `MOBILE`, `TABLET`).
-- `filterOperator`: The operator for `pageFilter` and `queryFilter`. Can be `equals`, `contains`, `notEquals`, or `notContains`. Defaults to `equals`.
+- `pageFilter`: Filter by page URL (supports regex with `regex:` prefix)
+- `queryFilter`: Filter by search query (supports regex with `regex:` prefix)
+- `countryFilter`: Filter by country ISO 3166-1 alpha-3 code (e.g., `USA`, `CHN`)
+- `deviceFilter`: Filter by device type (`DESKTOP`, `MOBILE`, `TABLET`)
+- `searchAppearanceFilter`: Filter by search feature (e.g., `AMP_BLUE_LINK`, `AMP_TOP_STORIES`)
+- `filterOperator`: Operator for filters (`equals`, `contains`, `notEquals`, `notContains`, `includingRegex`, `excludingRegex`)
 
+**Quick Wins Detection:**
 
-Example with Filters:
+- `detectQuickWins`: Enable automatic detection of optimization opportunities (default: `false`)
+- `quickWinsConfig`: Configuration for quick wins detection:
+  - `positionRange`: Position range to consider (default: `[4, 20]`)
+  - `minImpressions`: Minimum impressions threshold (default: `100`)
+  - `minCtr`: Minimum CTR percentage (default: `1`)
+
+**Example - Basic Query:**
+
+```json
+{
+  "siteUrl": "https://example.com",
+  "startDate": "2024-01-01",
+  "endDate": "2024-01-31",
+  "dimensions": "query,page",
+  "rowLimit": 5000
+}
+```
+
+**Example - Advanced Filtering with Regex:**
 
 ```json
 {
@@ -113,9 +137,27 @@ Example with Filters:
   "startDate": "2024-01-01",
   "endDate": "2024-01-31",
   "dimensions": "page,query",
-  "queryFilter": "ai assistant",
-  "filterOperator": "contains",
-  "deviceFilter": "MOBILE"
+  "queryFilter": "regex:(AI|machine learning|ML)",
+  "filterOperator": "includingRegex",
+  "deviceFilter": "MOBILE",
+  "rowLimit": 10000
+}
+```
+
+**Example - Quick Wins Detection:**
+
+```json
+{
+  "siteUrl": "https://example.com",
+  "startDate": "2024-01-01",
+  "endDate": "2024-01-31",
+  "dimensions": "query,page",
+  "detectQuickWins": true,
+  "quickWinsConfig": {
+    "positionRange": [4, 15],
+    "minImpressions": 500,
+    "minCtr": 2
+  }
 }
 ```
 

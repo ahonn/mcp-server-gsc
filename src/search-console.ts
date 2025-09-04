@@ -65,6 +65,127 @@ export class SearchConsoleService {
     );
   }
 
+  /**
+   * Enhanced Search Analytics with advanced features
+   * - Supports up to 25,000 rows (vs 1,000 default)
+   * - Regex filtering capabilities
+   * - Quick wins detection
+   */
+  async enhancedSearchAnalytics(
+    siteUrl: string, 
+    requestBody: SearchanalyticsQueryRequest,
+    options: {
+      regexFilter?: string;
+      enableQuickWins?: boolean;
+      quickWinsThresholds?: {
+        minImpressions?: number;
+        maxCtr?: number;
+        positionRangeMin?: number;
+        positionRangeMax?: number;
+      };
+    } = {}
+  ) {
+    // Ensure requestBody is defined
+    if (!requestBody) {
+      throw new Error('Request body is required');
+    }
+
+    // Apply regex filter if provided
+    if (options.regexFilter && requestBody.dimensions?.includes('query')) {
+      requestBody.dimensionFilterGroups = [
+        ...(requestBody.dimensionFilterGroups || []),
+        {
+          groupType: 'and',
+          filters: [{
+            dimension: 'query',
+            operator: 'includingRegex',
+            expression: options.regexFilter
+          }]
+        }
+      ];
+    }
+
+    // Execute enhanced search analytics
+    const result = await this.searchAnalytics(siteUrl, requestBody);
+    
+    // Apply quick wins detection if enabled
+    if (options.enableQuickWins && result.data.rows) {
+      const quickWins = this.detectQuickWins(result.data.rows, options.quickWinsThresholds);
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          quickWins: quickWins,
+          enhancedFeatures: {
+            regexFilterApplied: !!options.regexFilter,
+            quickWinsEnabled: true,
+            rowLimit: requestBody.rowLimit || 1000
+          }
+        }
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * Automatic Quick Wins Detection
+   * Identifies SEO optimization opportunities
+   */
+  private detectQuickWins(
+    rows: any[], 
+    thresholds: {
+      minImpressions?: number;
+      maxCtr?: number;
+      positionRangeMin?: number;
+      positionRangeMax?: number;
+    } = {}
+  ) {
+    const {
+      minImpressions = 50,
+      maxCtr = 2.0,
+      positionRangeMin = 4,
+      positionRangeMax = 10
+    } = thresholds;
+
+    return rows
+      .filter(row => {
+        const impressions = row.impressions || 0;
+        const ctr = (row.ctr || 0) * 100;
+        const position = row.position || 0;
+
+        return impressions >= minImpressions &&
+               ctr <= maxCtr &&
+               position >= positionRangeMin &&
+               position <= positionRangeMax;
+      })
+      .map(row => {
+        const impressions = row.impressions || 0;
+        const currentClicks = row.clicks || 0;
+        const currentCtr = (row.ctr || 0) * 100;
+        const position = row.position || 0;
+
+        // Calculate potential with 5% target CTR
+        const targetCtr = 5.0;
+        const potentialClicks = Math.round((impressions * targetCtr) / 100);
+        const additionalClicks = Math.max(0, potentialClicks - currentClicks);
+
+        return {
+          query: row.keys?.[0] || 'N/A',
+          page: row.keys?.[1] || 'N/A',
+          currentPosition: Number(position.toFixed(1)),
+          impressions: impressions,
+          currentClicks: currentClicks,
+          currentCtr: Number(currentCtr.toFixed(2)),
+          potentialClicks: potentialClicks,
+          additionalClicks: additionalClicks,
+          opportunity: additionalClicks > 0 ? 'High' : 'Low',
+          optimizationNote: `Move from position ${position.toFixed(1)} to improve CTR`
+        };
+      })
+      .sort((a, b) => b.additionalClicks - a.additionalClicks);
+  }
+
   async listSites() {
     const webmasters = await this.getWebmasters();
     return webmasters.sites.list();

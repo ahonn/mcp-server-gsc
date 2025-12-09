@@ -1,0 +1,7 @@
+{
+  "name": "buffer-equal-constant-time",
+  "version": "1.0.2",
+  "description": "Node.js 25 compatible fork - constant-time buffer comparison using crypto.timingSafeEqual",
+  "main": "index.js",
+  "license": "BSD-3-Clause"
+}

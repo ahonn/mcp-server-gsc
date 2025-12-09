@@ -19,9 +19,11 @@ A Model Context Protocol (MCP) server providing comprehensive access to Google S
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 18 or later (including Node.js 25+)
 - Google Cloud Project with Search Console API enabled
 - Service Account credentials with Search Console access
+
+> **Node.js 25 Compatibility**: This fork includes a fix for Node.js 25 compatibility. The original `buffer-equal-constant-time` package used `SlowBuffer` which was removed in Node.js 25. This is resolved using npm overrides with a patched version that uses `crypto.timingSafeEqual`.
 
 ## Installation
 

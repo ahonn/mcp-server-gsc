@@ -1,13 +1,6 @@
 # Google Search Console MCP Server
-[![smithery badge](https://smithery.ai/badge/mcp-server-gsc)](https://smithery.ai/server/mcp-server-gsc)
 
 A Model Context Protocol (MCP) server providing comprehensive access to Google Search Console data with enhanced analytics capabilities.
-
-### Sponsored by
-
-<a href="https://macuse.app">
-    <img src="https://macuse.app/logo.png" width="100" alt="Macuse">
-</a>
 
 ## Features
 
@@ -19,11 +12,9 @@ A Model Context Protocol (MCP) server providing comprehensive access to Google S
 
 ## Prerequisites
 
-- Node.js 18 or later (including Node.js 25+)
+- Node.js 18 or later
 - Google Cloud Project with Search Console API enabled
 - Service Account credentials with Search Console access
-
-> **Node.js 25 Compatibility**: This fork includes a fix for Node.js 25 compatibility. The original `buffer-equal-constant-time` package used `SlowBuffer` which was removed in Node.js 25. This is resolved using npm overrides with a patched version that uses `crypto.timingSafeEqual`.
 
 ## Installation
 

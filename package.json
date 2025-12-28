@@ -21,17 +21,16 @@
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
-    "@modelcontextprotocol/sdk": "^1.24.3",
-    "google-auth-library": "^9.15.0",
-    "googleapis": "^146.0.0",
-    "zod": "^3.25.0",
-    "zod-to-json-schema": "^3.25.0"
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "google-auth-library": "^10.5.0",
+    "googleapis": "^169.0.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
-    "shx": "^0.3.4",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "@types/node": "^24.10.4",
+    "shx": "^0.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "overrides": {
     "buffer-equal-constant-time": "file:./patches/buffer-equal-constant-time"

@@ -23,7 +23,7 @@ import { SearchConsoleService } from './search-console.js';
 // ============================================================================
 
 const SERVER_NAME = 'gsc-mcp-server';
-const SERVER_VERSION = '0.2.1';
+const SERVER_VERSION = '0.2.2';
 
 // ============================================================================
 // Environment & Service Initialization

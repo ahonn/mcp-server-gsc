@@ -247,9 +247,9 @@ export const IndexInspectSchema = GSCBaseSchema.extend({
     .describe('The fully-qualified URL to inspect'),
   languageCode: z
     .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Must be an IETF BCP-47 language code')
+    .regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/, 'Must be an IETF BCP-47 language code')
     .default('en-US')
-    .describe('Language code for translated messages (e.g., "en-US", "de-CH")'),
+    .describe('Language code for translated messages (e.g., "en-US", "zh-Hans", "es-419")'),
 });
 
 // ============================================================================

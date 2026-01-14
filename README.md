@@ -10,6 +10,14 @@ A Model Context Protocol (MCP) server providing comprehensive access to Google S
 - **Rich Dimensions**: Query, page, country, device, and search appearance analysis
 - **Flexible Date Ranges**: Customizable reporting periods with historical data access
 
+### Sponsored by
+
+<a href="https://macuse.app?ref=mcp-server-gsc">
+    <img src="https://macuse.app/logo-pill.png" width="200" alt="macuse.app">
+</a>
+
+[macuse.app](https://macuse.app) is a native macOS application that gives your AI superpowers by integrating AI assistants with macOS apps like Calendar, Mail, and Notes, plus universal UI control for any application. Supports Claude Desktop, Cursor, and Raycast with one-click setup. Privacy-first, runs locally.
+
 ## Prerequisites
 
 - Node.js 18 or later

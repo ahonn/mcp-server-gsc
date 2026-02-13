@@ -13,13 +13,13 @@ export const SearchAnalyticsSchema = GSCBaseSchema.extend({
   endDate: z.string().describe('End date in YYYY-MM-DD format'),
   dimensions: z
     .string()
-    .transform((val) => val.split(','))
+    .transform((val) => val.split(',').map((d) => d.trim()))
     .refine((val) =>
-      val.every((d) => ['query', 'page', 'country', 'device', 'searchAppearance'].includes(d)),
+      val.every((d) => ['query', 'page', 'country', 'device', 'date', 'searchAppearance'].includes(d)),
     )
     .optional()
     .describe(
-      'Comma-separated list of dimensions to break down results by, such as query, page, country, device, searchAppearance',
+      'Comma-separated list of dimensions to break down results by, such as query, page, country, device, date, searchAppearance',
     ),
   type: z
     .enum(['web', 'image', 'video', 'news'])

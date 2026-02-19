@@ -13,10 +13,24 @@ export class SearchConsoleService {
   private auth: GoogleAuth;
 
   constructor(credentials: string) {
-    this.auth = new google.auth.GoogleAuth({
-      keyFile: credentials,
-      scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
-    });
+    const isJsonString = credentials.trimStart().startsWith('{');
+    if (isJsonString) {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(credentials);
+      } catch {
+        throw new Error('Invalid credentials: failed to parse JSON');
+      }
+      this.auth = new google.auth.GoogleAuth({
+        credentials: parsed,
+        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+      });
+    } else {
+      this.auth = new google.auth.GoogleAuth({
+        keyFile: credentials,
+        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+      });
+    }
   }
 
   private async getWebmasters() {

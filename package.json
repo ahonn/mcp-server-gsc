@@ -14,16 +14,20 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "prepare": "npm run build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "dev:remote": "wrangler dev src/remote.ts",
+    "deploy": "wrangler deploy src/remote.ts"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
+    "@hono/mcp": "^0.2.3",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "google-auth-library": "^9.15.0",
     "googleapis": "^146.0.0",
+    "hono": "^4.12.0",
     "zod": "^3.25.0",
     "zod-to-json-schema": "^3.25.0"
   },
@@ -31,7 +35,8 @@
     "@types/node": "^22.10.1",
     "shx": "^0.3.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.67.0"
   },
   "overrides": {
     "buffer-equal-constant-time": "file:./patches/buffer-equal-constant-time"

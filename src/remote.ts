@@ -33,7 +33,7 @@ app.all('/mcp', async (c) => {
   }
 
   const server = createServer(c.env.GOOGLE_CREDENTIALS);
-  const transport = new StreamableHTTPTransport({ sessionIdGenerator: false as any });
+  const transport = new StreamableHTTPTransport({ sessionIdGenerator: undefined });
 
   transport.onclose = () => {
     server.close().catch(() => {});

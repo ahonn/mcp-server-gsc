@@ -22,9 +22,9 @@ export const SearchAnalyticsSchema = GSCBaseSchema.extend({
       'Comma-separated list of dimensions to break down results by, such as query, page, country, device, date, searchAppearance',
     ),
   type: z
-    .enum(['web', 'image', 'video', 'news'])
+    .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
     .optional()
-    .describe('Type of search to filter by, such as web, image, video, news'),
+    .describe('Type of search to filter by, such as web, image, video, news, discover, googleNews'),
   aggregationType: z
     .enum(['auto', 'byNewsShowcasePanel', 'byProperty', 'byPage'])
     .optional()

@@ -6,13 +6,26 @@ type SearchanalyticsQueryRequest =
 type ListSitemapsRequest = webmasters_v3.Params$Resource$Sitemaps$List;
 type GetSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Get;
 type SubmitSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Submit;
+type DeleteSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Delete;
 type IndexInspectRequest =
   searchconsole_v1.Params$Resource$Urlinspection$Index$Inspect['requestBody'];
+
+const READONLY_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
+const READ_WRITE_SCOPE = 'https://www.googleapis.com/auth/webmasters';
+
+export interface SearchConsoleOptions {
+  /**
+   * Request the read/write scope instead of the read-only one. Needed for
+   * submit_sitemap, delete_sitemap, add_site and delete_site. Off by default.
+   */
+  allowWrite?: boolean;
+}
 
 export class SearchConsoleService {
   private auth: GoogleAuth;
 
-  constructor(credentials: string) {
+  constructor(credentials: string, options: SearchConsoleOptions = {}) {
+    const scopes = [options.allowWrite ? READ_WRITE_SCOPE : READONLY_SCOPE];
     const isJsonString = credentials.trimStart().startsWith('{');
     if (isJsonString) {
       let parsed: Record<string, unknown>;
@@ -23,12 +36,12 @@ export class SearchConsoleService {
       }
       this.auth = new google.auth.GoogleAuth({
         credentials: parsed,
-        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+        scopes,
       });
     } else {
       this.auth = new google.auth.GoogleAuth({
         keyFile: credentials,
-        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+        scopes,
       });
     }
   }
@@ -239,6 +252,28 @@ export class SearchConsoleService {
           siteUrl: this.normalizeUrl(requestBody.siteUrl!),
         }),
     );
+  }
+
+  async deleteSitemap(requestBody: DeleteSitemapRequest) {
+    const webmasters = await this.getWebmasters();
+    return this.handlePermissionError(
+      () => webmasters.sitemaps.delete(requestBody),
+      () =>
+        webmasters.sitemaps.delete({
+          ...requestBody,
+          siteUrl: this.normalizeUrl(requestBody.siteUrl!),
+        }),
+    );
+  }
+
+  async addSite(siteUrl: string) {
+    const webmasters = await this.getWebmasters();
+    return webmasters.sites.add({ siteUrl });
+  }
+
+  async deleteSite(siteUrl: string) {
+    const webmasters = await this.getWebmasters();
+    return webmasters.sites.delete({ siteUrl });
   }
 
   async indexInspect(requestBody: IndexInspectRequest) {

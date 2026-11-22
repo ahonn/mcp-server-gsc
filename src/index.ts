@@ -10,7 +10,8 @@ async function runServer() {
     process.exit(1);
   }
 
-  const server = createServer(credentials);
+  const allowWrite = process.env.GSC_ALLOW_WRITE === 'true';
+  const server = createServer(credentials, { allowWrite });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Google Search Console MCP Server running on stdio');

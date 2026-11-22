@@ -9,11 +9,29 @@ import {
   EnhancedSearchAnalyticsSchema,
   QuickWinsDetectionSchema,
   SubmitSitemapSchema,
+  DeleteSitemapSchema,
+  SiteSchema,
 } from './schemas.js';
 import { z } from 'zod';
 import { SearchConsoleService } from './search-console.js';
 
-export function createServer(credentials: string): Server {
+export interface ServerOptions {
+  /**
+   * Allow tools that change Search Console (submit or delete a sitemap, add or
+   * remove a site). When false, the server asks Google for the read-only scope
+   * and these tools return an error explaining how to turn them on.
+   */
+  allowWrite?: boolean;
+}
+
+const WRITE_TOOLS = new Set(['submit_sitemap', 'delete_sitemap', 'add_site', 'delete_site']);
+
+const WRITE_DISABLED_MESSAGE =
+  'This tool changes Search Console and is turned off. Set GSC_ALLOW_WRITE=true to allow it. ' +
+  'The service account also needs Full or Owner permission on the property.';
+
+export function createServer(credentials: string, options: ServerOptions = {}): Server {
+  const allowWrite = options.allowWrite ?? false;
   if (!credentials) {
     throw new Error('credentials parameter is required');
   }
@@ -72,8 +90,31 @@ export function createServer(credentials: string): Server {
         },
         {
           name: 'submit_sitemap',
-          description: 'Submit a sitemap for a site in Google Search Console',
+          description:
+            'Submit a sitemap for a site in Google Search Console. Google fetches it again right away. Needs GSC_ALLOW_WRITE=true',
           inputSchema: zodToJsonSchema(SubmitSitemapSchema),
+          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+        },
+        {
+          name: 'delete_sitemap',
+          description:
+            'Remove a sitemap from a site in Google Search Console. The URLs in it stay indexed. Needs GSC_ALLOW_WRITE=true',
+          inputSchema: zodToJsonSchema(DeleteSitemapSchema),
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+        },
+        {
+          name: 'add_site',
+          description:
+            'Add a site to the set of sites in Google Search Console. It still has to be verified before data shows up. Needs GSC_ALLOW_WRITE=true',
+          inputSchema: zodToJsonSchema(SiteSchema),
+          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+        },
+        {
+          name: 'delete_site',
+          description:
+            "Remove a site from this account's set of sites in Google Search Console. Needs GSC_ALLOW_WRITE=true",
+          inputSchema: zodToJsonSchema(SiteSchema),
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
         },
       ],
     };
@@ -85,7 +126,11 @@ export function createServer(credentials: string): Server {
         throw new Error('Arguments are required');
       }
 
-      const searchConsole = new SearchConsoleService(credentials);
+      if (WRITE_TOOLS.has(request.params.name) && !allowWrite) {
+        throw new Error(WRITE_DISABLED_MESSAGE);
+      }
+
+      const searchConsole = new SearchConsoleService(credentials, { allowWrite });
 
       switch (request.params.name) {
         case 'enhanced_search_analytics': {
@@ -341,12 +386,52 @@ export function createServer(credentials: string): Server {
             siteUrl: args.siteUrl,
             feedpath: args.feedpath,
           };
-          const response = await searchConsole.submitSitemap(requestBody);
+          await searchConsole.submitSitemap(requestBody);
+          // Google answers an empty body on success, so say what happened.
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(response.data, null, 2),
+                text: JSON.stringify({ submitted: true, siteUrl: args.siteUrl, feedpath: args.feedpath }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'delete_sitemap': {
+          const args = DeleteSitemapSchema.parse(request.params.arguments);
+          await searchConsole.deleteSitemap({ siteUrl: args.siteUrl, feedpath: args.feedpath });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ deleted: true, siteUrl: args.siteUrl, feedpath: args.feedpath }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'add_site': {
+          const args = SiteSchema.parse(request.params.arguments);
+          await searchConsole.addSite(args.siteUrl);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ added: true, siteUrl: args.siteUrl }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'delete_site': {
+          const args = SiteSchema.parse(request.params.arguments);
+          await searchConsole.deleteSite(args.siteUrl);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ deleted: true, siteUrl: args.siteUrl }, null, 2),
               },
             ],
           };

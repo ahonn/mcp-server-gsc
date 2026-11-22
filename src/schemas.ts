@@ -90,6 +90,23 @@ export const SubmitSitemapSchema = z.object({
     .describe("The site's URL, including protocol. For example: http://www.example.com/"),
 });
 
+export const DeleteSitemapSchema = z.object({
+  feedpath: z
+    .string()
+    .describe('The URL of the sitemap to remove. For example: http://www.example.com/sitemap.xml'),
+  siteUrl: z
+    .string()
+    .describe("The site's URL, including protocol. For example: http://www.example.com/"),
+});
+
+export const SiteSchema = z.object({
+  siteUrl: z
+    .string()
+    .describe(
+      'The site URL as defined in Search Console. Example: sc-domain:example.com (for domain resources) or http://www.example.com/ (for site prefix resources)',
+    ),
+});
+
 // Enhanced Quick Wins Detection Schema
 export const QuickWinsDetectionSchema = GSCBaseSchema.extend({
   startDate: z.string().describe('Start date in YYYY-MM-DD format'),

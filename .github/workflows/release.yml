@@ -100,7 +100,8 @@ jobs:
       - name: Publish to npm with OIDC
         env:
           VERSION: ${{ needs.build.outputs.version }}
-        run: npm publish "artifacts/mcp-server-gsc-$VERSION.tgz" --access public
+        # The ./ prefix stops npm from reading the path as a GitHub owner/repo shorthand.
+        run: npm publish "./artifacts/mcp-server-gsc-$VERSION.tgz" --access public
 
   github-release:
     needs: [build, publish-npm]

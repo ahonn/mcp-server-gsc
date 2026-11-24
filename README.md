@@ -72,6 +72,19 @@ To obtain Google Search Console API credentials:
 }
 ```
 
+### Codex Configuration
+
+Add the server to `~/.codex/config.toml`, or to `.codex/config.toml` in a trusted project. Use an absolute path for the credentials file.
+
+```toml
+[mcp_servers.gsc]
+command = "npx"
+args = ["-y", "mcp-server-gsc"]
+
+[mcp_servers.gsc.env]
+GOOGLE_APPLICATION_CREDENTIALS = "/path/to/credentials.json"
+```
+
 ### Write access (optional)
 
 By default the server asks Google for the read-only scope (`webmasters.readonly`), so it can't change anything in Search Console. To let it submit sitemaps and manage sites, set `GSC_ALLOW_WRITE=true`:
@@ -96,6 +109,30 @@ The server then requests the `webmasters` scope. The service account needs Full 
 Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site` and `delete_site` return an error that says how to turn them on. Before this change `submit_sitemap` was listed but always failed with "Insufficient Permission", because the server only ever had the read-only scope.
 
 "Request indexing" from the URL Inspection page is not part of the Search Console API, so no tool here can do it. The URL Inspection API (`index_inspect`) only reads.
+
+### Remote Deployment (Cloudflare Workers)
+
+The remote server requires a bearer token. If `MCP_API_TOKEN` is not set, `/mcp` returns HTTP 500 and does not serve Search Console data.
+
+1. Set the service account secret:
+
+   ```bash
+   wrangler secret put GOOGLE_CREDENTIALS
+   ```
+
+2. Set the bearer token secret:
+
+   ```bash
+   wrangler secret put MCP_API_TOKEN
+   ```
+
+3. Deploy the Worker:
+
+   ```bash
+   pnpm run deploy
+   ```
+
+4. Configure each client to send `Authorization: Bearer <token>` to `https://<your-worker>.workers.dev/mcp`.
 
 ## Available Tools
 

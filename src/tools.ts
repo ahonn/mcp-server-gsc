@@ -9,7 +9,9 @@ import {
   rangeDays,
   resolveComparison,
   rollingWindows,
+  shiftDate,
   splitBrandedQueries,
+  todayPacific,
   toMetrics,
   type GscRow,
 } from './analysis.js';
@@ -33,9 +35,13 @@ import {
   SiteSchema,
   SubmitSitemapSchema,
   TrafficDropsSchema,
+  type WithDates,
 } from './schemas.js';
+import { rowsToTsv, TextResult } from './response-format.js';
 import type { SearchConsoleService } from './search-console.js';
 import { buildSearchRequest, paginationInfo } from './search-request.js';
+import { resolveSiteUrl } from './site-resolver.js';
+import { ToolInputError } from './tool-errors.js';
 import {
   BatchInspectOutput,
   BrandSplitOutput,
@@ -75,6 +81,18 @@ export interface ToolContext {
   reportProgress?: (progress: number, total: number, message: string) => void;
 }
 
+/** Facts about how a request was resolved. Every read response includes them. */
+export type ResponseMeta = Record<string, unknown>;
+
+type ReadContext = ToolContext & { meta: ResponseMeta };
+type DateMode = 'range' | 'end';
+
+// Dates older than this are final, so they need no freshness lookup.
+const FINAL_DATA_AGE_DAYS = 5;
+const DEFAULT_DATA_LAG_DAYS = 3;
+const DEFAULT_RANGE_DAYS = 28;
+const DEFAULT_HOURLY_RANGE_DAYS = 2;
+
 export interface ToolDefinition {
   name: string;
   title: string;
@@ -94,21 +112,127 @@ const READ_ANNOTATIONS: ToolAnnotations = {
   openWorldHint: true,
 };
 
-function readTool<S extends z.ZodType>(definition: {
+async function latestFinalDate(
+  gsc: SearchConsoleClient,
+  siteUrl: string,
+  today: string,
+  type?: string,
+): Promise<string | null> {
+  try {
+    const response = await gsc.searchAnalytics(siteUrl, {
+      startDate: shiftDate(today, -10),
+      endDate: today,
+      dimensions: ['date'],
+      dataState: 'final',
+      type,
+      rowLimit: 20,
+    });
+    const dates = (response.data.rows ?? []).flatMap((row) => row.keys?.[0] ?? []).sort();
+    return dates.at(-1) ?? null;
+  } catch {
+    // Freshness is advisory. The main query reports any real access error.
+    return null;
+  }
+}
+
+async function resolveDates(args: Record<string, any>, gsc: SearchConsoleClient, mode: DateMode) {
+  if (mode === 'range' && args.startDate && args.days !== undefined) {
+    throw new ToolInputError('Set startDate or days, not both.');
+  }
+  const today = todayPacific();
+  const hasHour = Array.isArray(args.dimensions) && args.dimensions.includes('hour');
+  const dataState: string = args.dataState ?? (hasHour ? 'hourly_all' : 'final');
+  const recentEnd = !args.endDate || args.endDate > shiftDate(today, -FINAL_DATA_AGE_DAYS);
+  const dataThrough =
+    args.siteUrl && recentEnd ? await latestFinalDate(gsc, args.siteUrl, today, args.type) : null;
+
+  const endDate: string =
+    args.endDate ??
+    (dataState === 'final' ? (dataThrough ?? shiftDate(today, -DEFAULT_DATA_LAG_DAYS)) : today);
+  const meta: ResponseMeta = { endDate, dataState, dataThrough };
+  if (dataState === 'final' && dataThrough && endDate > dataThrough) {
+    meta.warning = `endDate is after the latest final data (${dataThrough}), so recent days may be missing.`;
+  }
+  if (mode === 'end') return { dates: { endDate }, meta };
+
+  const days = args.days ?? (hasHour ? DEFAULT_HOURLY_RANGE_DAYS : DEFAULT_RANGE_DAYS);
+  const startDate: string = args.startDate ?? shiftDate(endDate, -(days - 1));
+  rangeDays(startDate, endDate);
+  return { dates: { startDate, endDate }, meta: { startDate, ...meta } };
+}
+
+async function prepareRead(parsed: unknown, gsc: SearchConsoleClient, mode?: DateMode) {
+  const args = { ...(parsed as Record<string, any>) };
+  const meta: ResponseMeta = {};
+  if (typeof args.siteUrl === 'string') {
+    const requested = args.siteUrl;
+    args.siteUrl = await resolveSiteUrl(requested, async () =>
+      ((await gsc.listSites()).data.siteEntry ?? []).flatMap((site) => site.siteUrl ?? []),
+    );
+    meta.siteUrl = args.siteUrl;
+    if (args.siteUrl !== requested) meta.requestedSiteUrl = requested;
+  }
+  if (mode) {
+    const resolved = await resolveDates(args, gsc, mode);
+    Object.assign(args, resolved.dates);
+    Object.assign(meta, resolved.meta);
+    delete args.days;
+  }
+  return { args, meta };
+}
+
+function withMeta(result: unknown, meta: ResponseMeta): unknown {
+  if (result instanceof TextResult || Object.keys(meta).length === 0) return result;
+  const body = result as Record<string, unknown>;
+  return { ...body, meta: { ...meta, ...(body.meta as ResponseMeta | undefined) } };
+}
+
+function buildRead<S extends z.ZodType, A>(
+  definition: {
+    name: string;
+    title: string;
+    description: string;
+    schema: S;
+    outputSchema?: z.ZodType;
+    run(args: A, gsc: SearchConsoleClient, context: ReadContext): Promise<unknown>;
+  },
+  mode?: DateMode,
+): ToolDefinition {
+  return {
+    ...definition,
+    annotations: READ_ANNOTATIONS,
+    write: false,
+    run: async (args, gsc, context) => {
+      const prepared = await prepareRead(definition.schema.parse(args), gsc, mode);
+      const result = await definition.run(prepared.args as A, gsc, {
+        ...context,
+        meta: prepared.meta,
+      });
+      return withMeta(result, prepared.meta);
+    },
+  };
+}
+
+type ReadDefinition<S extends z.ZodType, A> = {
   name: string;
   title: string;
   description: string;
   schema: S;
   outputSchema?: z.ZodType;
-  run(args: z.output<S>, gsc: SearchConsoleClient, context?: ToolContext): Promise<unknown>;
-}): ToolDefinition {
-  return {
-    ...definition,
-    annotations: READ_ANNOTATIONS,
-    write: false,
-    run: (args, gsc, context) => definition.run(definition.schema.parse(args), gsc, context),
-  };
-}
+  run(args: A, gsc: SearchConsoleClient, context: ReadContext): Promise<unknown>;
+};
+
+const readTool = <S extends z.ZodType>(definition: ReadDefinition<S, z.output<S>>) =>
+  buildRead(definition);
+
+/** A read tool whose date range is resolved before it runs. */
+const rangeTool = <S extends z.ZodType>(definition: ReadDefinition<S, WithDates<z.output<S>>>) =>
+  buildRead(definition, 'range');
+
+/** A read tool that needs only a resolved end date. */
+const endDateTool = <S extends z.ZodType>(
+  definition: ReadDefinition<S, Omit<z.output<S>, 'endDate'> & { endDate: string }>,
+) => buildRead(definition, 'end');
 
 function writeTool<S extends z.ZodType>(definition: {
   name: string;
@@ -138,7 +262,7 @@ const totalsFor = async (
   range: { startDate: string; endDate: string },
   type?: string,
 ): Promise<GscRow | undefined> => {
-  const response = await gsc.searchAnalytics(siteUrl, { ...range, type }, { exactSite: true });
+  const response = await gsc.searchAnalytics(siteUrl, { ...range, type });
   return response.data.rows?.[0];
 };
 
@@ -244,21 +368,33 @@ export const TOOLS: ToolDefinition[] = [
     schema: ListSitesSchema,
     run: async (_args, gsc) => (await gsc.listSites()).data,
   }),
-  readTool({
+  rangeTool({
     name: 'search_analytics',
     title: 'Search Analytics',
     description:
-      'Get search performance data. Supports hourly data, fresh data, filters, and pagination through startRow',
+      'Get search performance rows. Dates are optional and default to the last 28 days of final data. Returns compact TSV with a # meta line. Supports hourly data, fresh data, filters, and pagination through startRow',
     schema: SearchAnalyticsSchema,
-    run: async (args, gsc) => {
+    run: async (args, gsc, context) => {
       const response = await gsc.searchAnalytics(args.siteUrl, buildSearchRequest(args));
-      return {
-        ...response.data,
-        pagination: paginationInfo(args.startRow, args.rowLimit, response.data.rows?.length ?? 0),
+      const rows = response.data.rows ?? [];
+      const metadata = response.data as { metadata?: { first_incomplete_date?: string; first_incomplete_hour?: string } };
+      const meta = {
+        ...context.meta,
+        ...paginationInfo(args.startRow, args.rowLimit, rows.length),
+        ...(metadata.metadata?.first_incomplete_date
+          ? { firstIncompleteDate: metadata.metadata.first_incomplete_date }
+          : {}),
+        ...(metadata.metadata?.first_incomplete_hour
+          ? { firstIncompleteHour: metadata.metadata.first_incomplete_hour }
+          : {}),
       };
+      if (args.responseFormat === 'tsv') {
+        return new TextResult(rowsToTsv(rows, args.dimensions ?? [], meta));
+      }
+      return { meta, rows, responseAggregationType: response.data.responseAggregationType };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'detect_quick_wins',
     title: 'Detect Quick Wins',
     description: 'Find query and page pairs that rank close to the top but have a low CTR',
@@ -291,7 +427,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'compare_periods',
     title: 'Compare Periods',
     description: 'Compare two date ranges by query, page, country, or device, with totals and top movers',
@@ -320,7 +456,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'detect_traffic_drops',
     title: 'Detect Traffic Drops',
     description:
@@ -344,7 +480,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  endDateTool({
     name: 'detect_content_decay',
     title: 'Detect Content Decay',
     description: 'Find pages whose clicks fell in every one of several consecutive time windows',
@@ -369,7 +505,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'find_cannibalization',
     title: 'Find Keyword Cannibalization',
     description: 'Find queries where several pages of the site compete for impressions',
@@ -393,7 +529,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'find_ctr_opportunities',
     title: 'Find CTR Opportunities',
     description: "Find query and page pairs whose CTR is below this site's median CTR at the same position",
@@ -417,7 +553,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'brand_split',
     title: 'Branded Traffic Split',
     description: 'Split query traffic into branded and non-branded segments using your brand terms',
@@ -437,7 +573,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'diagnose_site',
     title: 'Diagnose Site',
     description:
@@ -540,7 +676,7 @@ export const TOOLS: ToolDefinition[] = [
       };
     },
   }),
-  readTool({
+  rangeTool({
     name: 'multi_site_overview',
     title: 'Multi-Site Overview',
     description: 'Compare clicks, impressions, CTR, and position across all or selected properties',

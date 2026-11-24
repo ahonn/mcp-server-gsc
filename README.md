@@ -200,18 +200,21 @@ The Worker also serves a public home page at `/` and a privacy policy at `/priva
 
 **Required:**
 
-- `siteUrl`: Property, such as `https://example.com/` or `sc-domain:example.com`
-- `startDate`: Start date (`YYYY-MM-DD`)
-- `endDate`: End date (`YYYY-MM-DD`)
+- `siteUrl`: A property (`sc-domain:example.com`, `https://example.com/`), a bare domain, or a page URL. The response shows the resolved property in `meta.siteUrl`.
 
 **Optional:**
+
+- `startDate`: Start date (`YYYY-MM-DD`, Pacific Time)
+- `endDate`: End date. Defaults to the latest day with final data
+- `days`: Range length when `startDate` is omitted (default: 28)
 
 - `dimensions`: Comma-separated list of `query`, `page`, `country`, `device`, `date`, `hour`, `searchAppearance`, `brandedClassification`
 - `type`: `web`, `image`, `video`, `news`, `discover`, `googleNews`, `webMultimodal`
 - `aggregationType`: `auto`, `byNewsShowcasePanel`, `byProperty`, `byPage`
 - `dataState`: `final`, `all`, `hourly_all`
-- `rowLimit`: Rows in this response (default: 1000, max: 25000)
+- `rowLimit`: Rows in this response (default: 100, max: 25000)
 - `startRow`: Zero-based row offset (default: 0)
+- `responseFormat`: `tsv` (default) or `json`
 
 **Filters:**
 
@@ -246,7 +249,7 @@ The Worker also serves a public home page at `/` and a privacy policy at `/priva
 
 **Example: Read the next page**
 
-If `pagination.hasMore` is `true`, send `pagination.nextStartRow` as `startRow`:
+If `hasMore` in the `# meta` line is `true`, send `nextStartRow` as `startRow`:
 
 ```json
 {
@@ -277,7 +280,7 @@ Google does not report anonymized queries in query rows, so query-level totals c
 
 If a tool reads `maxRows` rows, it sets `dataTruncated` to `true`. A page or query that is missing from truncated data is counted in `unknownDueToTruncation`. It is not reported as lost. To include more rows, increase `maxRows`.
 
-These tools analyze the exact property in `siteUrl`. They do not fall back to a domain property. `multi_site_overview` does not add metrics across properties, because a domain property and its URL-prefix properties can overlap.
+Tools use the property that `siteUrl` resolves to and report it in `meta.siteUrl`. A failed tool call returns `isError: true` with a message that says how to fix it. `multi_site_overview` does not add metrics across properties, because a domain property and its URL-prefix properties can overlap.
 
 **Example: Find traffic drops**
 

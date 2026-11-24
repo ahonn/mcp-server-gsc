@@ -1,4 +1,5 @@
-import type { SearchAnalytics } from './schemas.js';
+import type { SearchAnalytics, WithDates } from './schemas.js';
+import { ToolInputError } from './tool-errors.js';
 
 interface SearchFilter {
   dimension: string;
@@ -7,16 +8,16 @@ interface SearchFilter {
 }
 
 /** Translates validated tool arguments into a Search Analytics request body. */
-export function buildSearchRequest(args: SearchAnalytics) {
+export function buildSearchRequest(args: WithDates<SearchAnalytics>) {
   const hasHour = args.dimensions?.includes('hour') ?? false;
   if (hasHour && args.dataState && args.dataState !== 'hourly_all') {
-    throw new Error('The hour dimension requires dataState "hourly_all"');
+    throw new ToolInputError('The hour dimension requires dataState "hourly_all"');
   }
   if (args.dataState === 'hourly_all' && !hasHour) {
-    throw new Error('dataState "hourly_all" requires the hour dimension');
+    throw new ToolInputError('dataState "hourly_all" requires the hour dimension');
   }
   if (args.brandedClassificationFilter && (args.queryFilter || args.regexFilter)) {
-    throw new Error('brandedClassificationFilter cannot be combined with a query filter');
+    throw new ToolInputError('brandedClassificationFilter cannot be combined with a query filter');
   }
 
   const filters: SearchFilter[] = [];

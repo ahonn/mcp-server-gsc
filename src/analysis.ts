@@ -40,6 +40,16 @@ export function shiftDate(date: string, days: number): string {
   return new Date(parseDate(date) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
+/** Search Console reports dates in Pacific Time. */
+export function todayPacific(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
 export interface DateRange {
   startDate: string;
   endDate: string;

@@ -40,17 +40,6 @@ export interface SearchConsoleOptions {
   allowWrite?: boolean;
 }
 
-/** Returns the domain property for a URL-prefix site, or null if none applies. */
-function toDomainProperty(siteUrl: string | null | undefined): string | null {
-  if (!siteUrl || siteUrl.startsWith('sc-domain:')) return null;
-  try {
-    const { protocol, hostname } = new URL(siteUrl);
-    return protocol === 'http:' || protocol === 'https:' ? `sc-domain:${hostname}` : null;
-  } catch {
-    return null;
-  }
-}
-
 export class SearchConsoleService {
   private auth: GoogleAuth;
 
@@ -92,36 +81,9 @@ export class SearchConsoleService {
     } as searchconsole_v1.Options);
   }
 
-  /**
-   * Retries a read on the matching domain property after a permission error.
-   * Write methods must not use this: the fallback targets a different property
-   * than the one the caller named.
-   */
-  private async readWithSiteFallback<T>(
-    siteUrl: string | null | undefined,
-    read: (site: string | null | undefined) => Promise<T>,
-  ): Promise<T> {
-    try {
-      return await read(siteUrl);
-    } catch (err) {
-      const fallback = toDomainProperty(siteUrl);
-      if (fallback && err instanceof Error && err.message.toLowerCase().includes('permission')) {
-        return await read(fallback);
-      }
-      throw err;
-    }
-  }
-
-  async searchAnalytics(
-    siteUrl: string,
-    requestBody: SearchanalyticsQueryRequest,
-    options: { exactSite?: boolean } = {},
-  ) {
+  async searchAnalytics(siteUrl: string, requestBody: SearchanalyticsQueryRequest) {
     const webmasters = await this.getWebmasters();
-    const query = (site: string | null | undefined) =>
-      webmasters.searchanalytics.query({ siteUrl: site!, requestBody }, READ_RETRY_OPTIONS);
-    // A domain property covers more URLs than a prefix, so analysis must not switch to it.
-    return options.exactSite ? query(siteUrl) : this.readWithSiteFallback(siteUrl, query);
+    return webmasters.searchanalytics.query({ siteUrl, requestBody }, READ_RETRY_OPTIONS);
   }
 
   /** Pages through results until Google returns an empty page or maxRows is reached. */
@@ -133,11 +95,11 @@ export class SearchConsoleService {
     const rows: GscRow[] = [];
     while (rows.length < maxRows) {
       const rowLimit = Math.min(MAX_ROWS_PER_REQUEST, maxRows - rows.length);
-      const response = await this.searchAnalytics(
-        siteUrl,
-        { ...requestBody, rowLimit, startRow: rows.length },
-        { exactSite: true },
-      );
+      const response = await this.searchAnalytics(siteUrl, {
+        ...requestBody,
+        rowLimit,
+        startRow: rows.length,
+      });
       const page = response.data.rows ?? [];
       // Google documents an empty page as the end. A short page does not prove it.
       if (page.length === 0) break;
@@ -153,16 +115,12 @@ export class SearchConsoleService {
 
   async listSitemaps(requestBody: ListSitemapsRequest) {
     const webmasters = await this.getWebmasters();
-    return this.readWithSiteFallback(requestBody.siteUrl, (site) =>
-      webmasters.sitemaps.list({ ...requestBody, siteUrl: site ?? undefined }),
-    );
+    return webmasters.sitemaps.list(requestBody);
   }
 
   async getSitemap(requestBody: GetSitemapRequest) {
     const webmasters = await this.getWebmasters();
-    return this.readWithSiteFallback(requestBody.siteUrl, (site) =>
-      webmasters.sitemaps.get({ ...requestBody, siteUrl: site ?? undefined }),
-    );
+    return webmasters.sitemaps.get(requestBody);
   }
 
   async submitSitemap(requestBody: SubmitSitemapRequest) {

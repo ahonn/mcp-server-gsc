@@ -46,14 +46,27 @@ export const GSCBaseSchema = z.object({
   siteUrl: z
     .string()
     .describe(
-      'The site URL as defined in Search Console. Example: sc-domain:example.com (for domain resources) or http://www.example.com/ (for site prefix resources)',
+      'A Search Console property, bare domain, or page URL. Examples: sc-domain:example.com, https://www.example.com/, example.com',
     ),
 });
 
-const DateRangeSchema = GSCBaseSchema.extend({
-  startDate: DateSchema.describe('Start date in YYYY-MM-DD format'),
-  endDate: DateSchema.describe('End date in YYYY-MM-DD format'),
-});
+const DateRangeShape = {
+  startDate: DateSchema.optional().describe(
+    'Start date in YYYY-MM-DD format, Pacific Time. Defaults from days and endDate',
+  ),
+  endDate: DateSchema.optional().describe(
+    'End date in YYYY-MM-DD format, Pacific Time. Defaults to the latest day with final data',
+  ),
+  days: z
+    .number()
+    .int()
+    .min(1)
+    .max(480)
+    .optional()
+    .describe('Length of the range when startDate is omitted. Defaults to 28'),
+};
+
+const DateRangeSchema = GSCBaseSchema.extend(DateRangeShape);
 
 const ComparisonRangeShape = {
   previousStartDate: DateSchema.optional().describe(
@@ -89,14 +102,18 @@ export const SearchAnalyticsSchema = DateRangeSchema.extend({
     .int()
     .min(1)
     .max(25000)
-    .default(1000)
-    .describe('Maximum rows in this response (1 to 25,000)'),
+    .default(100)
+    .describe('Maximum rows in this response (1 to 25,000). Use startRow to read more'),
   startRow: z
     .number()
     .int()
     .min(0)
     .default(0)
     .describe('Zero-based row offset. Use pagination.nextStartRow from the previous response'),
+  responseFormat: z
+    .enum(['tsv', 'json'])
+    .default('tsv')
+    .describe('tsv uses far less context. Use json only when a program must parse the rows'),
   pageFilter: z.string().optional().describe('Filter by page URL. Use with filterOperator.'),
   queryFilter: z.string().optional().describe('Filter by query string. Use with filterOperator.'),
   countryFilter: z.string().optional().describe('Filter by a country using ISO 3166-1 alpha-3 code (e.g., USA, CHN).'),
@@ -154,7 +171,7 @@ export const ListSitemapsSchema = z.object({
     ),
   siteUrl: z
     .string()
-    .describe("The site's URL, including protocol. For example: http://www.example.com/"),
+    .describe("A Search Console property, bare domain, or page URL"),
 });
 
 export const GetSitemapSchema = z.object({
@@ -163,7 +180,7 @@ export const GetSitemapSchema = z.object({
     .describe('The URL of the actual sitemap. For example: http://www.example.com/sitemap.xml'),
   siteUrl: z
     .string()
-    .describe("The site's URL, including protocol. For example: http://www.example.com/"),
+    .describe("A Search Console property, bare domain, or page URL"),
 });
 
 export const SubmitSitemapSchema = z.object({
@@ -236,7 +253,9 @@ export const TrafficDropsSchema = DateRangeSchema.extend({
 });
 
 export const ContentDecaySchema = GSCBaseSchema.extend({
-  endDate: DateSchema.describe('Last date of the newest window in YYYY-MM-DD format'),
+  endDate: DateSchema.optional().describe(
+    'Last date of the newest window in YYYY-MM-DD format. Defaults to the latest day with final data',
+  ),
   periodDays: z.number().int().min(7).max(90).default(28).describe('Length of each window in days'),
   periods: z.number().int().min(3).max(6).default(3).describe('Number of consecutive windows'),
   type: SearchTypeSchema,
@@ -298,8 +317,7 @@ export const DiagnoseSiteSchema = DateRangeSchema.extend({
 });
 
 export const MultiSiteOverviewSchema = z.object({
-  startDate: DateSchema.describe('Start date in YYYY-MM-DD format'),
-  endDate: DateSchema.describe('End date in YYYY-MM-DD format'),
+  ...DateRangeShape,
   ...ComparisonRangeShape,
   siteUrls: z
     .array(z.string())
@@ -311,5 +329,9 @@ export const MultiSiteOverviewSchema = z.object({
 });
 
 export type SearchAnalytics = z.infer<typeof SearchAnalyticsSchema>;
+export type WithDates<T> = Omit<T, 'startDate' | 'endDate' | 'days'> & {
+  startDate: string;
+  endDate: string;
+};
 export type QuickWinsDetection = z.infer<typeof QuickWinsDetectionSchema>;
 export type IndexInspect = z.infer<typeof IndexInspectSchema>;

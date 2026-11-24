@@ -331,6 +331,16 @@ pnpm run build
 pnpm test
 ```
 
+### Release
+
+Releases use npm trusted publishing, so the repository stores no npm token.
+
+1. Update the version in `package.json`, `package-lock.json`, `manifest.json`, and `src/server.ts`.
+2. Add the version to `CHANGELOG.md`.
+3. Push a tag such as `v0.4.0`.
+
+The `Release` workflow tests the package, publishes it to npm with provenance, and creates a GitHub release with the `.mcpb` bundle.
+
 ## License
 
 MIT

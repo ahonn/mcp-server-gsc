@@ -45,10 +45,16 @@ export interface DateRange {
   endDate: string;
 }
 
-/** Returns the period of equal length that ends the day before startDate. */
-export function previousPeriod(startDate: string, endDate: string): DateRange {
+/** Returns the number of days in an inclusive date range. */
+export function rangeDays(startDate: string, endDate: string): number {
   const days = (parseDate(endDate) - parseDate(startDate)) / DAY_MS + 1;
   if (days < 1) throw new Error('startDate must not be after endDate');
+  return days;
+}
+
+/** Returns the period of equal length that ends the day before startDate. */
+export function previousPeriod(startDate: string, endDate: string): DateRange {
+  const days = rangeDays(startDate, endDate);
   return { startDate: shiftDate(startDate, -days), endDate: shiftDate(startDate, -1) };
 }
 
@@ -393,52 +399,43 @@ export function splitBrandedQueries(
   };
 }
 
+/** Rows must use the dimensions [query, page]. CTR values are fractions, as in Google's API. */
 export function detectQuickWins(
   rows: GscRow[],
-  thresholds: {
-    minImpressions?: number;
-    maxCtr?: number;
-    positionRangeMin?: number;
-    positionRangeMax?: number;
-  } = {},
+  options: {
+    minImpressions: number;
+    maxCtr: number;
+    positionRangeMin: number;
+    positionRangeMax: number;
+    targetCtr: number;
+    limit: number;
+  },
 ) {
-  const { minImpressions = 50, maxCtr = 2.0, positionRangeMin = 4, positionRangeMax = 10 } = thresholds;
+  if (options.positionRangeMin > options.positionRangeMax) {
+    throw new Error('positionRangeMin must not be greater than positionRangeMax');
+  }
 
-  return rows
+  const quickWins = rows
     .filter((row) => {
-      const impressions = row.impressions || 0;
-      const ctr = (row.ctr || 0) * 100;
-      const position = row.position || 0;
+      const position = row.position ?? 0;
       return (
-        impressions >= minImpressions &&
-        ctr <= maxCtr &&
-        position >= positionRangeMin &&
-        position <= positionRangeMax
+        (row.impressions ?? 0) >= options.minImpressions &&
+        (row.ctr ?? 0) <= options.maxCtr &&
+        position >= options.positionRangeMin &&
+        position <= options.positionRangeMax
       );
     })
     .map((row) => {
-      const impressions = row.impressions || 0;
-      const currentClicks = row.clicks || 0;
-      const currentCtr = (row.ctr || 0) * 100;
-      const position = row.position || 0;
-
-      // Calculate potential with 5% target CTR
-      const targetCtr = 5.0;
-      const potentialClicks = Math.round((impressions * targetCtr) / 100);
-      const additionalClicks = Math.max(0, potentialClicks - currentClicks);
-
+      const clicksAtTarget = Math.round((row.impressions ?? 0) * options.targetCtr);
       return {
-        query: row.keys?.[0] || 'N/A',
-        page: row.keys?.[1] || 'N/A',
-        currentPosition: Number(position.toFixed(1)),
-        impressions,
-        currentClicks,
-        currentCtr: Number(currentCtr.toFixed(2)),
-        potentialClicks,
-        additionalClicks,
-        opportunity: additionalClicks > 0 ? 'High' : 'Low',
-        optimizationNote: `Move from position ${position.toFixed(1)} to improve CTR`,
+        query: row.keys?.[0] ?? null,
+        page: row.keys?.[1] ?? null,
+        ...toMetrics(row),
+        estimatedClicksAtTarget: clicksAtTarget,
+        estimatedAdditionalClicks: Math.max(0, clicksAtTarget - (row.clicks ?? 0)),
       };
     })
-    .sort((a, b) => b.additionalClicks - a.additionalClicks);
+    .sort((a, b) => b.estimatedAdditionalClicks - a.estimatedAdditionalClicks);
+
+  return { totalOpportunities: quickWins.length, quickWins: quickWins.slice(0, options.limit) };
 }

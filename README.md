@@ -137,7 +137,7 @@ By default the server asks Google for the read-only scope (`webmasters.readonly`
 
 The server then requests the `webmasters` scope. The account needs Full or Owner permission on the property. For the remote server, set `GSC_ALLOW_WRITE` to `true` as a Worker variable.
 
-Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site`, and `delete_site` return an error that says how to turn them on.
+Without the flag, the server does not list `submit_sitemap`, `delete_sitemap`, `add_site`, and `delete_site`. A direct call returns an error that says how to turn them on.
 
 "Request indexing" from the URL Inspection page is not part of the Search Console API, so no tool here can do it. The URL Inspection API only reads.
 
@@ -193,7 +193,6 @@ The Worker also serves a public home page at `/` and a privacy policy at `/priva
 | Tool | What it does |
 |---|---|
 | `search_analytics` | Queries performance data with filters and pagination |
-| `enhanced_search_analytics` | Runs the same query and can add quick wins |
 | `compare_periods` | Compares two date ranges and lists the top gainers and losers |
 | `multi_site_overview` | Compares totals across all or selected properties |
 
@@ -262,11 +261,12 @@ If `pagination.hasMore` is `true`, send `pagination.nextStartRow` as `startRow`:
 
 ### SEO analysis
 
-These tools run fixed calculations on your Search Console data. They do not use a model or third-party benchmarks.
+These tools run fixed calculations on your Search Console data. They do not use a model or third-party benchmarks. The analysis tools and `batch_url_inspect` also return `structuredContent` that matches their `outputSchema`.
 
 | Tool | What it finds |
 |---|---|
-| `detect_quick_wins` | Queries in positions 4 to 10 with a low CTR |
+| `diagnose_site` | One-call diagnosis of traffic changes, drops, decay, top-page indexing, and sitemap errors |
+| `detect_quick_wins` | Query and page pairs in positions 4 to 10 with a low CTR. `maxCtr` and `targetCtr` are fractions, so `0.02` means 2% |
 | `detect_traffic_drops` | Pages that lost clicks, with a likely cause |
 | `detect_content_decay` | Pages whose clicks fell in each consecutive window |
 | `find_cannibalization` | Queries where several pages compete for impressions |
@@ -296,7 +296,7 @@ These tools analyze the exact property in `siteUrl`. They do not fall back to a 
 | Tool | What it does |
 |---|---|
 | `index_inspect` | Inspects one URL |
-| `batch_url_inspect` | Inspects up to 100 URLs. It stops and returns partial results if Google reports a quota error |
+| `batch_url_inspect` | Inspects up to 100 URLs and sends MCP progress notifications. It stops and returns partial results if Google reports a quota error |
 
 Google allows 2,000 inspections per site per day and 600 per minute.
 

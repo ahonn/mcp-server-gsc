@@ -1,6 +1,6 @@
 import { google, searchconsole_v1, webmasters_v3 } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
-import { detectQuickWins, type GscRow } from './analysis.js';
+import type { GscRow } from './analysis.js';
 
 // The API replaced `searchType` with `type`, but the generated client types lack it.
 export type SearchanalyticsQueryRequest = webmasters_v3.Schema$SearchAnalyticsQueryRequest & {
@@ -144,49 +144,6 @@ export class SearchConsoleService {
       rows.push(...page);
     }
     return rows;
-  }
-
-  /**
-   * Enhanced Search Analytics with advanced features
-   * - Supports up to 25,000 rows (vs 1,000 default)
-   * - Quick wins detection
-   */
-  async enhancedSearchAnalytics(
-    siteUrl: string,
-    requestBody: SearchanalyticsQueryRequest,
-    options: {
-      regexFilterApplied?: boolean;
-      enableQuickWins?: boolean;
-      quickWinsThresholds?: {
-        minImpressions?: number;
-        maxCtr?: number;
-        positionRangeMin?: number;
-        positionRangeMax?: number;
-      };
-    } = {},
-  ) {
-    if (!requestBody) {
-      throw new Error('Request body is required');
-    }
-
-    const result = await this.searchAnalytics(siteUrl, requestBody);
-
-    if (options.enableQuickWins && result.data.rows) {
-      return {
-        ...result,
-        data: {
-          ...result.data,
-          quickWins: detectQuickWins(result.data.rows, options.quickWinsThresholds),
-          enhancedFeatures: {
-            regexFilterApplied: !!options.regexFilterApplied,
-            quickWinsEnabled: true,
-            rowLimit: requestBody.rowLimit || 1000,
-          },
-        },
-      };
-    }
-
-    return result;
   }
 
   async listSites() {

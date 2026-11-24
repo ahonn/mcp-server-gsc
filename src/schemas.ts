@@ -154,18 +154,15 @@ export const ListSitemapsSchema = z.object({
     ),
   siteUrl: z
     .string()
-    .optional()
     .describe("The site's URL, including protocol. For example: http://www.example.com/"),
 });
 
 export const GetSitemapSchema = z.object({
   feedpath: z
     .string()
-    .optional()
     .describe('The URL of the actual sitemap. For example: http://www.example.com/sitemap.xml'),
   siteUrl: z
     .string()
-    .optional()
     .describe("The site's URL, including protocol. For example: http://www.example.com/"),
 });
 
@@ -197,27 +194,25 @@ export const SiteSchema = z.object({
 
 export const ListSitesSchema = z.object({});
 
-// Enhanced Quick Wins Detection Schema
 export const QuickWinsDetectionSchema = DateRangeSchema.extend({
-  minImpressions: z.number().default(50).describe('Minimum impressions threshold for quick wins'),
-  maxCtr: z.number().default(2.0).describe('Maximum CTR percentage for quick wins detection'),
-  positionRangeMin: z.number().default(4).describe('Minimum position for quick wins (default: 4)'),
-  positionRangeMax: z.number().default(10).describe('Maximum position for quick wins (default: 10)'),
-  estimatedClickValue: z.number().default(1.0).describe('Estimated value per click for ROI calculation'),
-  conversionRate: z.number().default(0.03).describe('Estimated conversion rate for ROI calculation'),
-});
-
-// Enhanced Search Analytics Schema with Quick Wins
-export const EnhancedSearchAnalyticsSchema = SearchAnalyticsSchema.extend({
-  enableQuickWins: z.boolean().default(false).describe('Enable automatic quick wins detection'),
-  quickWinsThresholds: QuickWinsDetectionSchema.pick({
-    minImpressions: true,
-    maxCtr: true,
-    positionRangeMin: true,
-    positionRangeMax: true,
-  })
-    .optional()
-    .describe('Custom thresholds for quick wins detection'),
+  type: SearchTypeSchema,
+  minImpressions: z.number().min(0).default(50).describe('Minimum impressions for a query and page pair'),
+  maxCtr: z
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.02)
+    .describe('Maximum CTR as a fraction, the same unit as Search Console rows. 0.02 means 2%'),
+  positionRangeMin: z.number().min(1).default(4).describe('Best position to include'),
+  positionRangeMax: z.number().min(1).default(10).describe('Worst position to include'),
+  targetCtr: z
+    .number()
+    .gt(0)
+    .max(1)
+    .default(0.05)
+    .describe('Assumed CTR as a fraction for the click estimate. It is a scenario, not a forecast'),
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
 });
 
 export const ComparePeriodsSchema = DateRangeSchema.extend({
@@ -288,6 +283,20 @@ export const BrandSplitSchema = DateRangeSchema.extend({
   maxRows: MaxRowsSchema,
 });
 
+export const DiagnoseSiteSchema = DateRangeSchema.extend({
+  ...ComparisonRangeShape,
+  type: SearchTypeSchema,
+  limit: z.number().int().min(1).max(50).default(10).describe('Maximum items in each result list'),
+  inspectLimit: z
+    .number()
+    .int()
+    .min(0)
+    .max(20)
+    .default(5)
+    .describe('Top dropped pages to check with URL Inspection. Each check uses daily quota'),
+  maxRows: MaxRowsSchema,
+});
+
 export const MultiSiteOverviewSchema = z.object({
   startDate: DateSchema.describe('Start date in YYYY-MM-DD format'),
   endDate: DateSchema.describe('End date in YYYY-MM-DD format'),
@@ -302,6 +311,5 @@ export const MultiSiteOverviewSchema = z.object({
 });
 
 export type SearchAnalytics = z.infer<typeof SearchAnalyticsSchema>;
-export type EnhancedSearchAnalytics = z.infer<typeof EnhancedSearchAnalyticsSchema>;
 export type QuickWinsDetection = z.infer<typeof QuickWinsDetectionSchema>;
 export type IndexInspect = z.infer<typeof IndexInspectSchema>;

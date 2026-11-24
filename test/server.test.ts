@@ -132,8 +132,11 @@ test('pacedMap keeps input order and honors the concurrency limit', async () => 
 test('tools/list publishes an object input schema for every tool', async () => {
   const client = await connect({});
   const { tools } = await client.listTools();
-  assert.equal(tools.length, TOOLS.length);
-  for (const tool of tools) assert.equal(tool.inputSchema.type, 'object');
+  assert.equal(tools.length, TOOLS.filter((tool) => !tool.write).length);
+  for (const tool of tools) {
+    assert.equal(tool.inputSchema.type, 'object');
+    assert.ok(tool.title);
+  }
   const search = tools.find((tool) => tool.name === 'search_analytics');
   assert.equal((search?.inputSchema.properties?.dimensions as { type: string }).type, 'string');
   assert.deepEqual(search?.inputSchema.required, ['siteUrl', 'startDate', 'endDate']);
@@ -227,4 +230,163 @@ test('the MCPB manifest lists every tool', () => {
     manifest.tools.map((tool: { name: string }) => tool.name).sort(),
     TOOLS.map((tool) => tool.name).sort(),
   );
+});
+
+test('write tools are listed only with write access', async () => {
+  const names = async (allowWrite: boolean) =>
+    (await (await connect({}, allowWrite)).listTools()).tools.map((tool) => tool.name);
+  const readOnly = await names(false);
+  const writable = await names(true);
+  assert.equal(readOnly.includes('delete_site'), false);
+  assert.equal(readOnly.includes('enhanced_search_analytics'), false);
+  assert.equal(writable.includes('delete_site'), true);
+  assert.equal(writable.length, TOOLS.length);
+});
+
+test('sitemap tools require their identifiers', async () => {
+  const { tools } = await (await connect({})).listTools();
+  const required = (name: string) => tools.find((tool) => tool.name === name)?.inputSchema.required;
+  assert.deepEqual(required('list_sitemaps'), ['siteUrl']);
+  assert.deepEqual([...(required('get_sitemap') ?? [])].sort(), ['feedpath', 'siteUrl']);
+});
+
+const row = (keys: string[], clicks: number, impressions: number, position: number) => ({
+  keys,
+  clicks,
+  impressions,
+  ctr: impressions ? clicks / impressions : 0,
+  position,
+});
+
+function analysisClient() {
+  const pageRows = (startDate: string) =>
+    startDate >= '2026-03-01'
+      ? [row(['https://example.com/a'], 10, 100, 9), row(['https://example.com/b'], 90, 100, 2)]
+      : [row(['https://example.com/a'], 60, 100, 4), row(['https://example.com/b'], 80, 100, 2)];
+  return {
+    queryAllRows: (async (_site: string, body: { startDate: string; dimensions: string[] }) =>
+      body.dimensions.length === 2
+        ? [
+            ...[1, 2, 3, 4, 5].map((n) => row([`query-${n}`, `https://example.com/${n}`], 10, 100, 5)),
+            row(['low', 'https://example.com/low'], 1, 200, 5),
+            row(['acme tools', 'https://example.com/a'], 20, 100, 3),
+            row(['acme tools', 'https://example.com/b'], 20, 100, 4),
+          ]
+        : body.dimensions[0] === 'query'
+          ? [row(['acme tools'], 20, 100, 3), row(['other'], 10, 100, 5)]
+          : pageRows(body.startDate)) as never,
+    searchAnalytics: (async (_site: string, body: { startDate: string }) => ({
+      data: {
+        rows: [
+          body.startDate >= '2026-03-01'
+            ? { clicks: 100, impressions: 200, ctr: 0.5, position: 4 }
+            : { clicks: 140, impressions: 200, ctr: 0.7, position: 3 },
+        ],
+      },
+    })) as never,
+    listSites: (async () => ({ data: { siteEntry: [{ siteUrl: 'sc-domain:example.com' }] } })) as never,
+    listSitemaps: (async () => ({ data: { sitemap: [{ errors: '2', warnings: '1' }] } })) as never,
+    indexInspect: (async () => ({
+      data: { inspectionResult: { indexStatusResult: { verdict: 'NEUTRAL' } } },
+    })) as never,
+  } satisfies Partial<SearchConsoleClient>;
+}
+
+test('analysis tools return structured content that matches their output schema', async () => {
+  const client = await connect(analysisClient());
+  const { tools } = await client.listTools();
+  const range = { siteUrl: 'sc-domain:example.com', startDate: '2026-03-01', endDate: '2026-03-28' };
+  const calls: Record<string, Record<string, unknown>> = {
+    detect_quick_wins: range,
+    compare_periods: range,
+    detect_traffic_drops: range,
+    detect_content_decay: { siteUrl: range.siteUrl, endDate: range.endDate },
+    find_cannibalization: range,
+    find_ctr_opportunities: range,
+    brand_split: { ...range, brandTerms: ['acme'] },
+    diagnose_site: range,
+    multi_site_overview: { startDate: range.startDate, endDate: range.endDate },
+    batch_url_inspect: { siteUrl: range.siteUrl, inspectionUrls: ['https://example.com/a'] },
+  };
+  assert.deepEqual(
+    tools.filter((tool) => tool.outputSchema).map((tool) => tool.name).sort(),
+    Object.keys(calls).sort(),
+  );
+  for (const [name, args] of Object.entries(calls)) {
+    // Client.callTool validates structuredContent against outputSchema.
+    const result = await client.callTool({ name, arguments: args });
+    assert.ok(result.structuredContent, name);
+    // tools/list publishes a shallow schema, so check the full contract here.
+    TOOLS.find((tool) => tool.name === name)?.outputSchema?.parse(result.structuredContent);
+    assert.deepEqual(parseResult(result), result.structuredContent, name);
+    assert.doesNotMatch((result.content as Array<{ text: string }>)[0].text, /\n/, name);
+  }
+});
+
+test('diagnose_site combines drops, indexing, and sitemap checks', async () => {
+  const client = await connect(analysisClient());
+  const result = (await client.callTool({
+    name: 'diagnose_site',
+    arguments: { siteUrl: 'sc-domain:example.com', startDate: '2026-03-01', endDate: '2026-03-28', inspectLimit: 1 },
+  })).structuredContent as {
+    summary: Record<string, unknown>;
+    trafficDrops: { causes: Record<string, number> };
+    indexing: { summary: { inspected: number } };
+    warnings: string[];
+  };
+  assert.equal(result.summary.clicksChange, -40);
+  assert.equal(result.summary.pagesDropped, 1);
+  assert.equal(result.summary.indexIssues, 1);
+  assert.equal(result.summary.sitemapErrors, 2);
+  assert.equal(result.trafficDrops.causes.ranking_loss, 1);
+  assert.equal(result.indexing.summary.inspected, 1);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('diagnose_site keeps the diagnosis when a sitemap check fails', async () => {
+  const client = await connect({
+    ...analysisClient(),
+    listSitemaps: (async () => {
+      throw new Error('denied');
+    }) as never,
+  });
+  const result = (await client.callTool({
+    name: 'diagnose_site',
+    arguments: { siteUrl: 'sc-domain:example.com', startDate: '2026-03-01', endDate: '2026-03-28', inspectLimit: 0 },
+  })).structuredContent as { sitemaps: unknown; summary: { sitemapErrors: unknown }; warnings: string[] };
+  assert.equal(result.sitemaps, null);
+  assert.equal(result.summary.sitemapErrors, null);
+  assert.match(result.warnings[0], /Sitemap check failed/);
+});
+
+test('detect_quick_wins uses fractions and the requested search type', async () => {
+  let requestedType: unknown;
+  const client = await connect({
+    queryAllRows: (async (_site: string, body: { type?: string }) => {
+      requestedType = body.type;
+      return [row(['win', '/p'], 1, 200, 5), row(['high-ctr', '/q'], 20, 200, 5)];
+    }) as never,
+  });
+  const result = (await client.callTool({
+    name: 'detect_quick_wins',
+    arguments: { siteUrl: 'sc-domain:example.com', startDate: '2026-03-01', endDate: '2026-03-28', type: 'image', maxCtr: 0.02 },
+  })).structuredContent as { quickWins: Array<{ query: string; ctr: number; estimatedAdditionalClicks: number }> };
+  assert.equal(requestedType, 'image');
+  assert.deepEqual(result.quickWins.map((win) => win.query), ['win']);
+  assert.equal(result.quickWins[0].ctr, 0.005);
+  assert.equal(result.quickWins[0].estimatedAdditionalClicks, 9);
+});
+
+test('batch_url_inspect sends progress notifications', async () => {
+  const client = await connect(analysisClient());
+  const progress: number[] = [];
+  await client.callTool(
+    {
+      name: 'batch_url_inspect',
+      arguments: { siteUrl: 'sc-domain:example.com', inspectionUrls: ['https://example.com/a', 'https://example.com/b'] },
+    },
+    undefined,
+    { onprogress: (update) => progress.push(update.progress) },
+  );
+  assert.deepEqual(progress, [1, 2]);
 });

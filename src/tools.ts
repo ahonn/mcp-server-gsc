@@ -6,6 +6,7 @@ import {
   detectTrafficDrops,
   findCannibalization,
   findCtrOpportunities,
+  rangeDays,
   resolveComparison,
   rollingWindows,
   splitBrandedQueries,
@@ -21,7 +22,7 @@ import {
   ContentDecaySchema,
   CtrOpportunitiesSchema,
   DeleteSitemapSchema,
-  EnhancedSearchAnalyticsSchema,
+  DiagnoseSiteSchema,
   GetSitemapSchema,
   IndexInspectSchema,
   ListSitemapsSchema,
@@ -35,12 +36,23 @@ import {
 } from './schemas.js';
 import type { SearchConsoleService } from './search-console.js';
 import { buildSearchRequest, paginationInfo } from './search-request.js';
+import {
+  BatchInspectOutput,
+  BrandSplitOutput,
+  CannibalizationOutput,
+  ComparePeriodsOutput,
+  ContentDecayOutput,
+  CtrOpportunitiesOutput,
+  DiagnoseSiteOutput,
+  MultiSiteOutput,
+  QuickWinsOutput,
+  TrafficDropsOutput,
+} from './tool-outputs.js';
 
 export type SearchConsoleClient = Pick<
   SearchConsoleService,
   | 'searchAnalytics'
   | 'queryAllRows'
-  | 'enhancedSearchAnalytics'
   | 'listSites'
   | 'listSitemaps'
   | 'getSitemap'
@@ -58,14 +70,22 @@ interface ToolAnnotations {
   openWorldHint: boolean;
 }
 
+export interface ToolContext {
+  /** Present only when the client asked for progress notifications. */
+  reportProgress?: (progress: number, total: number, message: string) => void;
+}
+
 export interface ToolDefinition {
   name: string;
+  title: string;
   description: string;
   schema: z.ZodType;
+  /** When set, the server also returns the result as structuredContent. */
+  outputSchema?: z.ZodType;
   annotations: ToolAnnotations;
-  /** Write tools run only when the server was started with write access. */
+  /** Write tools are listed and run only when the server has write access. */
   write: boolean;
-  run(args: unknown, gsc: SearchConsoleClient): Promise<unknown>;
+  run(args: unknown, gsc: SearchConsoleClient, context?: ToolContext): Promise<unknown>;
 }
 
 const READ_ANNOTATIONS: ToolAnnotations = {
@@ -76,20 +96,23 @@ const READ_ANNOTATIONS: ToolAnnotations = {
 
 function readTool<S extends z.ZodType>(definition: {
   name: string;
+  title: string;
   description: string;
   schema: S;
-  run(args: z.output<S>, gsc: SearchConsoleClient): Promise<unknown>;
+  outputSchema?: z.ZodType;
+  run(args: z.output<S>, gsc: SearchConsoleClient, context?: ToolContext): Promise<unknown>;
 }): ToolDefinition {
   return {
     ...definition,
     annotations: READ_ANNOTATIONS,
     write: false,
-    run: (args, gsc) => definition.run(definition.schema.parse(args), gsc),
+    run: (args, gsc, context) => definition.run(definition.schema.parse(args), gsc, context),
   };
 }
 
 function writeTool<S extends z.ZodType>(definition: {
   name: string;
+  title: string;
   description: string;
   schema: S;
   destructive: boolean;
@@ -144,15 +167,86 @@ function errorStatus(error: unknown): number | undefined {
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+async function inspectUrls(
+  gsc: SearchConsoleClient,
+  siteUrl: string,
+  urls: string[],
+  languageCode: string,
+  context?: ToolContext,
+) {
+  let quotaExceeded = false;
+  let completed = 0;
+  const inspectionUrls = [...new Set(urls)];
+  const finish = (result: InspectionResult) => {
+    completed += 1;
+    context?.reportProgress?.(completed, inspectionUrls.length, `Inspected ${completed} of ${inspectionUrls.length} URLs`);
+    return result;
+  };
+
+  // 120 ms between calls stays below Google's limit of 600 inspections per minute.
+  const results = await pacedMap<string, InspectionResult>(
+    inspectionUrls,
+    { concurrency: 5, minIntervalMs: 120, shouldStop: () => quotaExceeded },
+    async (inspectionUrl) => {
+      try {
+        const response = await gsc.indexInspect({ siteUrl, inspectionUrl, languageCode });
+        const status = response.data.inspectionResult?.indexStatusResult;
+        return finish({
+          inspectionUrl,
+          status: 'ok',
+          verdict: status?.verdict ?? null,
+          coverageState: status?.coverageState ?? null,
+          robotsTxtState: status?.robotsTxtState ?? null,
+          indexingState: status?.indexingState ?? null,
+          pageFetchState: status?.pageFetchState ?? null,
+          lastCrawlTime: status?.lastCrawlTime ?? null,
+          googleCanonical: status?.googleCanonical ?? null,
+          userCanonical: status?.userCanonical ?? null,
+        });
+      } catch (error) {
+        if (errorStatus(error) === QUOTA_STATUS) quotaExceeded = true;
+        return finish({ inspectionUrl, status: 'error', error: errorMessage(error) });
+      }
+    },
+    (inspectionUrl) =>
+      finish({
+        inspectionUrl,
+        status: 'skipped',
+        error: 'Skipped because Google reported a quota error',
+      }),
+  );
+
+  const verdicts: Record<string, number> = {};
+  for (const result of results) {
+    if (result.status === 'ok') {
+      const verdict = result.verdict ?? 'UNKNOWN';
+      verdicts[verdict] = (verdicts[verdict] ?? 0) + 1;
+    }
+  }
+  return {
+    summary: {
+      requested: inspectionUrls.length,
+      inspected: results.filter((result) => result.status === 'ok').length,
+      failed: results.filter((result) => result.status === 'error').length,
+      skipped: results.filter((result) => result.status === 'skipped').length,
+      quotaExceeded,
+      verdicts,
+    },
+    results,
+  };
+}
+
 export const TOOLS: ToolDefinition[] = [
   readTool({
     name: 'list_sites',
+    title: 'List Sites',
     description: 'List all sites in Google Search Console',
     schema: ListSitesSchema,
     run: async (_args, gsc) => (await gsc.listSites()).data,
   }),
   readTool({
     name: 'search_analytics',
+    title: 'Search Analytics',
     description:
       'Get search performance data. Supports hourly data, fresh data, filters, and pagination through startRow',
     schema: SearchAnalyticsSchema,
@@ -165,54 +259,44 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
   readTool({
-    name: 'enhanced_search_analytics',
-    description: 'Search analytics with all search_analytics options and optional quick wins detection',
-    schema: EnhancedSearchAnalyticsSchema,
-    run: async (args, gsc) => {
-      const response = await gsc.enhancedSearchAnalytics(args.siteUrl, buildSearchRequest(args), {
-        regexFilterApplied: Boolean(args.regexFilter),
-        enableQuickWins: args.enableQuickWins,
-        quickWinsThresholds: args.quickWinsThresholds,
-      });
-      return {
-        ...response.data,
-        pagination: paginationInfo(args.startRow, args.rowLimit, response.data.rows?.length ?? 0),
-      };
-    },
-  }),
-  readTool({
     name: 'detect_quick_wins',
-    description: 'Find queries that rank close to the top but have a low CTR',
+    title: 'Detect Quick Wins',
+    description: 'Find query and page pairs that rank close to the top but have a low CTR',
     schema: QuickWinsDetectionSchema,
+    outputSchema: QuickWinsOutput,
     run: async (args, gsc) => {
-      const response = await gsc.searchAnalytics(args.siteUrl, {
+      const rows = await gsc.queryAllRows(
+        args.siteUrl,
+        {
+          startDate: args.startDate,
+          endDate: args.endDate,
+          dimensions: ['query', 'page'],
+          type: args.type,
+        },
+        args.maxRows,
+      );
+      return {
         startDate: args.startDate,
         endDate: args.endDate,
-        dimensions: ['query', 'page'],
-        rowLimit: 25000,
-      });
-      if (!response.data.rows) {
-        return { message: 'No data available for quick wins analysis' };
-      }
-      const thresholds = {
-        minImpressions: args.minImpressions,
-        maxCtr: args.maxCtr,
-        positionRangeMin: args.positionRangeMin,
-        positionRangeMax: args.positionRangeMax,
-      };
-      const quickWins = detectQuickWins(response.data.rows, thresholds);
-      return {
-        quickWins,
-        totalOpportunities: quickWins.length,
-        thresholds,
-        analysis: 'Quick wins detection completed',
+        rowsAnalyzed: rows.length,
+        dataTruncated: rows.length >= args.maxRows,
+        thresholds: {
+          minImpressions: args.minImpressions,
+          maxCtr: args.maxCtr,
+          positionRangeMin: args.positionRangeMin,
+          positionRangeMax: args.positionRangeMax,
+          targetCtr: args.targetCtr,
+        },
+        ...detectQuickWins(rows, args),
       };
     },
   }),
   readTool({
     name: 'compare_periods',
+    title: 'Compare Periods',
     description: 'Compare two date ranges by query, page, country, or device, with totals and top movers',
     schema: ComparePeriodsSchema,
+    outputSchema: ComparePeriodsOutput,
     run: async (args, gsc) => {
       const current = { startDate: args.startDate, endDate: args.endDate };
       const previous = resolveComparison(args);
@@ -238,9 +322,11 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'detect_traffic_drops',
+    title: 'Detect Traffic Drops',
     description:
       'Find pages that lost clicks between two periods and classify the likely cause: ranking, impressions, CTR, or visibility',
     schema: TrafficDropsSchema,
+    outputSchema: TrafficDropsOutput,
     run: async (args, gsc) => {
       const current = { startDate: args.startDate, endDate: args.endDate };
       const previous = resolveComparison(args);
@@ -260,8 +346,10 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'detect_content_decay',
+    title: 'Detect Content Decay',
     description: 'Find pages whose clicks fell in every one of several consecutive time windows',
     schema: ContentDecaySchema,
+    outputSchema: ContentDecayOutput,
     run: async (args, gsc) => {
       const windows = rollingWindows(args.endDate, args.periodDays, args.periods);
       const rows = await Promise.all(
@@ -283,8 +371,10 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'find_cannibalization',
+    title: 'Find Keyword Cannibalization',
     description: 'Find queries where several pages of the site compete for impressions',
     schema: CannibalizationSchema,
+    outputSchema: CannibalizationOutput,
     run: async (args, gsc) => {
       const rows = await gsc.queryAllRows(
         args.siteUrl,
@@ -305,8 +395,10 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'find_ctr_opportunities',
+    title: 'Find CTR Opportunities',
     description: "Find query and page pairs whose CTR is below this site's median CTR at the same position",
     schema: CtrOpportunitiesSchema,
+    outputSchema: CtrOpportunitiesOutput,
     run: async (args, gsc) => {
       const rows = await gsc.queryAllRows(
         args.siteUrl,
@@ -327,8 +419,10 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'brand_split',
+    title: 'Branded Traffic Split',
     description: 'Split query traffic into branded and non-branded segments using your brand terms',
     schema: BrandSplitSchema,
+    outputSchema: BrandSplitOutput,
     run: async (args, gsc) => {
       const range = { startDate: args.startDate, endDate: args.endDate };
       const [rows, totals] = await Promise.all([
@@ -344,9 +438,114 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
   readTool({
+    name: 'diagnose_site',
+    title: 'Diagnose Site',
+    description:
+      'Run one site diagnosis: period totals, dropped pages with likely causes, content decay, URL Inspection for the top dropped pages, and sitemap errors. Use it first for a broad "what changed" question',
+    schema: DiagnoseSiteSchema,
+    outputSchema: DiagnoseSiteOutput,
+    run: async (args, gsc, context) => {
+      const current = { startDate: args.startDate, endDate: args.endDate };
+      const previous = resolveComparison(args);
+      const body = { dimensions: ['page'], type: args.type };
+      const periodDays = Math.min(90, Math.max(7, rangeDays(args.startDate, args.endDate)));
+      const windows = rollingWindows(args.endDate, periodDays, 3);
+      const [currentRows, previousRows, currentTotals, previousTotals, windowRows] = await Promise.all([
+        gsc.queryAllRows(args.siteUrl, { ...current, ...body }, args.maxRows),
+        gsc.queryAllRows(args.siteUrl, { ...previous, ...body }, args.maxRows),
+        totalsFor(gsc, args.siteUrl, current, args.type),
+        totalsFor(gsc, args.siteUrl, previous, args.type),
+        Promise.all(
+          windows.map((window) => gsc.queryAllRows(args.siteUrl, { ...window, ...body }, args.maxRows)),
+        ),
+      ]);
+
+      const currentTruncated = currentRows.length >= args.maxRows;
+      const truncatedWindows = windowRows.map((rows) => rows.length >= args.maxRows);
+      const drops = detectTrafficDrops(currentRows, previousRows, {
+        minPreviousClicks: 10,
+        minDropPct: 20,
+        limit: Math.max(args.limit, args.inspectLimit),
+        currentTruncated,
+      });
+      const decay = detectContentDecay(windowRows, {
+        minPeakClicks: 20,
+        minDeclinePct: 20,
+        limit: args.limit,
+        truncatedWindows,
+      });
+
+      // A failed secondary check must not hide the traffic diagnosis.
+      const warnings: string[] = [];
+      const inspection = await inspectUrls(
+        gsc,
+        args.siteUrl,
+        drops.drops.slice(0, args.inspectLimit).map((drop) => drop.page),
+        'en-US',
+        context,
+      );
+      if (inspection.summary.failed > 0) {
+        warnings.push(`${inspection.summary.failed} URL inspections failed`);
+      }
+      if (inspection.summary.quotaExceeded) warnings.push('URL Inspection quota was exceeded');
+
+      let sitemaps: { count: number; errors: number; warnings: number } | null = null;
+      try {
+        const entries = (await gsc.listSitemaps({ siteUrl: args.siteUrl })).data.sitemap ?? [];
+        sitemaps = {
+          count: entries.length,
+          errors: entries.reduce((sum, entry) => sum + Number(entry.errors ?? 0), 0),
+          warnings: entries.reduce((sum, entry) => sum + Number(entry.warnings ?? 0), 0),
+        };
+      } catch (error) {
+        warnings.push(`Sitemap check failed: ${errorMessage(error)}`);
+      }
+
+      const nowTotals = toMetrics(currentTotals);
+      const beforeTotals = toMetrics(previousTotals);
+      const issues = inspection.results.filter(
+        (result) => result.status !== 'ok' || result.verdict !== 'PASS',
+      );
+      return {
+        current: { ...current, totals: nowTotals },
+        previous: { ...previous, totals: beforeTotals },
+        dataTruncated:
+          currentTruncated || previousRows.length >= args.maxRows || truncatedWindows.some(Boolean),
+        summary: {
+          clicksChange: nowTotals.clicks - beforeTotals.clicks,
+          clicksChangePct: beforeTotals.clicks
+            ? Number((((nowTotals.clicks - beforeTotals.clicks) / beforeTotals.clicks) * 100).toFixed(1))
+            : null,
+          impressionsChange: nowTotals.impressions - beforeTotals.impressions,
+          pagesDropped: drops.totalDrops,
+          pagesDecaying: decay.totalDecaying,
+          indexIssues: issues.length,
+          sitemapErrors: sitemaps?.errors ?? null,
+        },
+        trafficDrops: {
+          total: drops.totalDrops,
+          unknownDueToTruncation: drops.unknownDueToTruncation,
+          causes: drops.causes,
+          top: drops.drops.slice(0, args.limit),
+        },
+        contentDecay: {
+          windows,
+          total: decay.totalDecaying,
+          unknownDueToTruncation: decay.unknownDueToTruncation,
+          top: decay.pages,
+        },
+        indexing: { summary: inspection.summary, issues },
+        sitemaps,
+        warnings,
+      };
+    },
+  }),
+  readTool({
     name: 'multi_site_overview',
+    title: 'Multi-Site Overview',
     description: 'Compare clicks, impressions, CTR, and position across all or selected properties',
     schema: MultiSiteOverviewSchema,
+    outputSchema: MultiSiteOutput,
     run: async (args, gsc) => {
       const current = { startDate: args.startDate, endDate: args.endDate };
       const previous = resolveComparison(args);
@@ -393,6 +592,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'index_inspect',
+    title: 'Inspect URL',
     description: 'Inspect a URL to see if it is indexed or can be indexed',
     schema: IndexInspectSchema,
     run: async (args, gsc) =>
@@ -406,70 +606,17 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'batch_url_inspect',
+    title: 'Batch Inspect URLs',
     description:
       'Inspect up to 100 URLs with rate limiting. Returns index status per URL, a verdict summary, and partial results if the quota runs out',
     schema: BatchUrlInspectSchema,
-    run: async (args, gsc) => {
-      let quotaExceeded = false;
-      const inspectionUrls = [...new Set(args.inspectionUrls)];
-      // 120 ms between calls stays below Google's limit of 600 inspections per minute.
-      const results = await pacedMap<string, InspectionResult>(
-        inspectionUrls,
-        { concurrency: 5, minIntervalMs: 120, shouldStop: () => quotaExceeded },
-        async (inspectionUrl) => {
-          try {
-            const response = await gsc.indexInspect({
-              siteUrl: args.siteUrl,
-              inspectionUrl,
-              languageCode: args.languageCode,
-            });
-            const status = response.data.inspectionResult?.indexStatusResult;
-            return {
-              inspectionUrl,
-              status: 'ok',
-              verdict: status?.verdict ?? null,
-              coverageState: status?.coverageState ?? null,
-              robotsTxtState: status?.robotsTxtState ?? null,
-              indexingState: status?.indexingState ?? null,
-              pageFetchState: status?.pageFetchState ?? null,
-              lastCrawlTime: status?.lastCrawlTime ?? null,
-              googleCanonical: status?.googleCanonical ?? null,
-              userCanonical: status?.userCanonical ?? null,
-            };
-          } catch (error) {
-            if (errorStatus(error) === QUOTA_STATUS) quotaExceeded = true;
-            return { inspectionUrl, status: 'error', error: errorMessage(error) };
-          }
-        },
-        (inspectionUrl) => ({
-          inspectionUrl,
-          status: 'skipped',
-          error: 'Skipped because Google reported a quota error',
-        }),
-      );
-
-      const verdicts: Record<string, number> = {};
-      for (const result of results) {
-        if (result.status === 'ok') {
-          const verdict = result.verdict ?? 'UNKNOWN';
-          verdicts[verdict] = (verdicts[verdict] ?? 0) + 1;
-        }
-      }
-      return {
-        summary: {
-          requested: inspectionUrls.length,
-          inspected: results.filter((result) => result.status === 'ok').length,
-          failed: results.filter((result) => result.status === 'error').length,
-          skipped: results.filter((result) => result.status === 'skipped').length,
-          quotaExceeded,
-          verdicts,
-        },
-        results,
-      };
-    },
+    outputSchema: BatchInspectOutput,
+    run: (args, gsc, context) =>
+      inspectUrls(gsc, args.siteUrl, args.inspectionUrls, args.languageCode, context),
   }),
   readTool({
     name: 'list_sitemaps',
+    title: 'List Sitemaps',
     description: 'List sitemaps for a site in Google Search Console',
     schema: ListSitemapsSchema,
     run: async (args, gsc) =>
@@ -477,6 +624,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   readTool({
     name: 'get_sitemap',
+    title: 'Get Sitemap',
     description: 'Get a sitemap for a site in Google Search Console',
     schema: GetSitemapSchema,
     run: async (args, gsc) =>
@@ -484,6 +632,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   writeTool({
     name: 'submit_sitemap',
+    title: 'Submit Sitemap',
     description:
       'Submit a sitemap for a site in Google Search Console. Google fetches it again right away. Needs GSC_ALLOW_WRITE=true',
     schema: SubmitSitemapSchema,
@@ -496,6 +645,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   writeTool({
     name: 'delete_sitemap',
+    title: 'Delete Sitemap',
     description:
       'Remove a sitemap from a site in Google Search Console. The URLs in it stay indexed. Needs GSC_ALLOW_WRITE=true',
     schema: DeleteSitemapSchema,
@@ -507,6 +657,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   writeTool({
     name: 'add_site',
+    title: 'Add Site',
     description:
       'Add a site to the set of sites in Google Search Console. It still has to be verified before data shows up. Needs GSC_ALLOW_WRITE=true',
     schema: SiteSchema,
@@ -518,6 +669,7 @@ export const TOOLS: ToolDefinition[] = [
   }),
   writeTool({
     name: 'delete_site',
+    title: 'Delete Site',
     description:
       "Remove a site from this account's set of sites in Google Search Console. Needs GSC_ALLOW_WRITE=true",
     schema: SiteSchema,

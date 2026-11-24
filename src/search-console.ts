@@ -242,28 +242,16 @@ export class SearchConsoleService {
     );
   }
 
+  // Write methods must not use handlePermissionError: its fallback targets a
+  // different property (sc-domain:) than the one the caller named.
   async submitSitemap(requestBody: SubmitSitemapRequest) {
     const webmasters = await this.getWebmasters();
-    return this.handlePermissionError(
-      () => webmasters.sitemaps.submit(requestBody),
-      () =>
-        webmasters.sitemaps.submit({
-          ...requestBody,
-          siteUrl: this.normalizeUrl(requestBody.siteUrl!),
-        }),
-    );
+    return webmasters.sitemaps.submit(requestBody);
   }
 
   async deleteSitemap(requestBody: DeleteSitemapRequest) {
     const webmasters = await this.getWebmasters();
-    return this.handlePermissionError(
-      () => webmasters.sitemaps.delete(requestBody),
-      () =>
-        webmasters.sitemaps.delete({
-          ...requestBody,
-          siteUrl: this.normalizeUrl(requestBody.siteUrl!),
-        }),
-    );
+    return webmasters.sitemaps.delete(requestBody);
   }
 
   async addSite(siteUrl: string) {

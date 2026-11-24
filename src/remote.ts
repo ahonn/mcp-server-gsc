@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { createServer } from './server.js';
+import { HOME_PAGE, PAGE_SECURITY_HEADERS, PRIVACY_PAGE } from './site.js';
 
 type Bindings = {
   GOOGLE_CREDENTIALS: string;
@@ -28,6 +29,8 @@ app.use('/mcp', async (c, next) => {
 });
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
+app.get('/', (c) => c.html(HOME_PAGE, 200, PAGE_SECURITY_HEADERS));
+app.get('/privacy', (c) => c.html(PRIVACY_PAGE, 200, PAGE_SECURITY_HEADERS));
 
 app.all('/mcp', async (c) => {
   if (!c.env.GOOGLE_CREDENTIALS) {

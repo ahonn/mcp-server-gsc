@@ -15,6 +15,8 @@
     "build": "tsc && shx chmod +x dist/*.js",
     "prepare": "npm run build",
     "watch": "tsc --watch",
+    "test": "node --import tsx --test test/*.test.ts",
+    "pack:mcpb": "node scripts/pack-mcpb.mjs",
     "dev:remote": "wrangler dev src/remote.ts",
     "deploy": "wrangler deploy src/remote.ts"
   },
@@ -22,14 +24,12 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@google-cloud/local-auth": "^3.0.1",
-    "@hono/mcp": "^0.2.5",
+    "@hono/mcp": "^0.3.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "google-auth-library": "^9.15.1",
     "googleapis": "^146.0.0",
     "hono": "^4.13.20",
-    "zod": "^3.25.76",
-    "zod-to-json-schema": "^3.25.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

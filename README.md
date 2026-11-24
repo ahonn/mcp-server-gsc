@@ -1,14 +1,17 @@
 # Google Search Console MCP Server
 
-A Model Context Protocol (MCP) server providing comprehensive access to Google Search Console data with enhanced analytics capabilities.
+A Model Context Protocol (MCP) server for querying, comparing, and diagnosing Google Search Console data.
 
 ## Features
 
-- **Enhanced Search Analytics**: Retrieve up to 25,000 rows of performance data
-- **Advanced Filtering**: Support for regex patterns and multiple filter operators
-- **Quick Wins Detection**: Automatically identify optimization opportunities
-- **Rich Dimensions**: Query, page, country, device, and search appearance analysis
-- **Flexible Date Ranges**: Customizable reporting periods with historical data access
+- **Full Search Analytics access**: Query data with pagination, fresh data, hourly data, and all Search Console dimensions.
+- **Period comparison**: Compare two date ranges by page, query, country, or device.
+- **SEO diagnostics**: Find traffic drops, content decay, keyword cannibalization, CTR gaps, and quick wins.
+- **Brand analysis**: Split traffic into branded and non-branded segments.
+- **Multi-site overview**: Compare all Search Console properties in one call.
+- **Batch URL inspection**: Inspect up to 100 URLs with rate limiting and partial results.
+- **Guided workflows**: Use MCP prompts for a weekly report, a traffic-drop diagnosis, and an indexing audit.
+- **Safe by default**: The server is read-only until you set `GSC_ALLOW_WRITE=true`.
 
 ### Sponsored by
 
@@ -21,8 +24,8 @@ A Model Context Protocol (MCP) server providing comprehensive access to Google S
 ## Prerequisites
 
 - Node.js 18 or later
-- Google Cloud Project with Search Console API enabled
-- Service Account credentials with Search Console access
+- A Google Cloud project with the Search Console API enabled
+- A Google account or service account with access to a Search Console property
 
 ## Installation
 
@@ -32,27 +35,43 @@ npm install mcp-server-gsc
 
 ## Authentication Setup
 
-To obtain Google Search Console API credentials:
+Select one method. If you set `GOOGLE_APPLICATION_CREDENTIALS`, the server uses that file. If you do not set it, the server uses the saved OAuth login.
 
-1. Visit the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the API:
+First, enable the API:
 
-- Go to "APIs & Services" > "Library"
-- Search for and enable ["Search Console API"](https://console.cloud.google.com/marketplace/product/google/searchconsole.googleapis.com)
+1. Open the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a project or select a project.
+3. Enable the [Search Console API](https://console.cloud.google.com/marketplace/product/google/searchconsole.googleapis.com).
 
-4. Create credentials:
+### Option A: OAuth login
 
-- Navigate to ["APIs & Services" > "Credentials"](https://console.cloud.google.com/apis/credentials)
-- Click "Create Credentials" > "Service Account"
-- Fill in the service account details
-- Create a new key in JSON format
-- The credentials file (.json) will download automatically
+Use this method to access the properties of your own Google account.
 
-5. Grant access:
+1. Open [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials).
+2. Create an **OAuth client ID** of type **Desktop app**.
+3. Download the client JSON file.
+4. Run the login command:
 
-- Open Search Console
-- Add the service account email (format: name@project.iam.gserviceaccount.com) as a property administrator
+   ```bash
+   npx mcp-server-gsc auth login --client-secret /path/to/client_secret.json
+   ```
+
+5. Approve the access in the browser.
+
+The server saves the login to `~/.config/mcp-server-gsc/oauth-token.json` with file mode `600`.
+
+To use write tools, add `--write` to the login command. To see the login state, run `npx mcp-server-gsc auth status`. To remove the saved login, run `npx mcp-server-gsc auth logout`.
+
+### Option B: Service account
+
+Use this method for automation, shared use, and remote deployment.
+
+1. Open [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials).
+2. Create a **Service Account**.
+3. Create a key in JSON format and download it.
+4. Open Search Console and add the service account email (`name@project.iam.gserviceaccount.com`) as a user of the property.
+
+Select **Restricted** for read-only use. Select **Full** to use write tools.
 
 ## Usage
 
@@ -72,6 +91,18 @@ To obtain Google Search Console API credentials:
 }
 ```
 
+If you use OAuth login, remove the `env` block.
+
+### MCP Bundle (`.mcpb`)
+
+To build a one-click bundle for clients that support MCPB, run:
+
+```bash
+pnpm run pack:mcpb
+```
+
+The command writes `release/mcp-server-gsc-<version>.mcpb`. The client asks for the credentials file during installation.
+
 ### Codex Configuration
 
 Add the server to `~/.codex/config.toml`, or to `.codex/config.toml` in a trusted project. Use an absolute path for the credentials file.
@@ -87,7 +118,7 @@ GOOGLE_APPLICATION_CREDENTIALS = "/path/to/credentials.json"
 
 ### Write access (optional)
 
-By default the server asks Google for the read-only scope (`webmasters.readonly`), so it can't change anything in Search Console. To let it submit sitemaps and manage sites, set `GSC_ALLOW_WRITE=true`:
+By default the server asks Google for the read-only scope (`webmasters.readonly`), so it cannot change anything in Search Console. To let it submit sitemaps and manage sites, set `GSC_ALLOW_WRITE=true`:
 
 ```json
 {
@@ -104,11 +135,11 @@ By default the server asks Google for the read-only scope (`webmasters.readonly`
 }
 ```
 
-The server then requests the `webmasters` scope. The service account needs Full or Owner permission on the property; a Restricted user can only read. For the remote server, set `GSC_ALLOW_WRITE` to `true` as a Worker variable.
+The server then requests the `webmasters` scope. The account needs Full or Owner permission on the property. For the remote server, set `GSC_ALLOW_WRITE` to `true` as a Worker variable.
 
-Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site` and `delete_site` return an error that says how to turn them on. Before this change `submit_sitemap` was listed but always failed with "Insufficient Permission", because the server only ever had the read-only scope.
+Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site`, and `delete_site` return an error that says how to turn them on.
 
-"Request indexing" from the URL Inspection page is not part of the Search Console API, so no tool here can do it. The URL Inspection API (`index_inspect`) only reads.
+"Request indexing" from the URL Inspection page is not part of the Search Console API, so no tool here can do it. The URL Inspection API only reads.
 
 ### Remote Deployment (Cloudflare Workers)
 
@@ -134,86 +165,121 @@ The remote server requires a bearer token. If `MCP_API_TOKEN` is not set, `/mcp`
 
 4. Configure each client to send `Authorization: Bearer <token>` to `https://<your-worker>.workers.dev/mcp`.
 
+The Worker also serves a public home page at `/` and a privacy policy at `/privacy`. These pages do not need the bearer token and contain no Search Console data.
+
 ## Available Tools
 
-### search_analytics
+### Search data
 
-Get comprehensive search performance data from Google Search Console with enhanced analytics capabilities.
+| Tool | What it does |
+|---|---|
+| `search_analytics` | Queries performance data with filters and pagination |
+| `enhanced_search_analytics` | Runs the same query and can add quick wins |
+| `compare_periods` | Compares two date ranges and lists the top gainers and losers |
+| `multi_site_overview` | Compares totals across all or selected properties |
 
-**Required Parameters:**
+#### `search_analytics` parameters
 
-- `siteUrl`: Site URL (format: `http://www.example.com/` or `sc-domain:example.com`)
-- `startDate`: Start date (YYYY-MM-DD)
-- `endDate`: End date (YYYY-MM-DD)
+**Required:**
 
-**Optional Parameters:**
+- `siteUrl`: Property, such as `https://example.com/` or `sc-domain:example.com`
+- `startDate`: Start date (`YYYY-MM-DD`)
+- `endDate`: End date (`YYYY-MM-DD`)
 
-- `dimensions`: Comma-separated list (`query`, `page`, `country`, `device`, `searchAppearance`, `date`)
-- `type`: Search type (`web`, `image`, `video`, `news`, `discover`, `googleNews`)
-- `aggregationType`: Aggregation method (`auto`, `byNewsShowcasePanel`, `byProperty`, `byPage`)
-- `rowLimit`: Maximum rows to return (default: 1000, max: 25000)
-- `dataState`: Data freshness (`all` or `final`, default: `final`)
+**Optional:**
 
-**Filter Parameters:**
+- `dimensions`: Comma-separated list of `query`, `page`, `country`, `device`, `date`, `hour`, `searchAppearance`, `brandedClassification`
+- `type`: `web`, `image`, `video`, `news`, `discover`, `googleNews`, `webMultimodal`
+- `aggregationType`: `auto`, `byNewsShowcasePanel`, `byProperty`, `byPage`
+- `dataState`: `final`, `all`, `hourly_all`
+- `rowLimit`: Rows in this response (default: 1000, max: 25000)
+- `startRow`: Zero-based row offset (default: 0)
 
-- `pageFilter`: Filter by page URL (supports regex with `regex:` prefix)
-- `queryFilter`: Filter by search query (supports regex with `regex:` prefix)
-- `countryFilter`: Filter by country ISO 3166-1 alpha-3 code (e.g., `USA`, `CHN`)
-- `deviceFilter`: Filter by device type (`DESKTOP`, `MOBILE`, `TABLET`)
-- `searchAppearanceFilter`: Filter by search feature (e.g., `AMP_BLUE_LINK`, `AMP_TOP_STORIES`)
-- `filterOperator`: Operator for filters (`equals`, `contains`, `notEquals`, `notContains`, `includingRegex`, `excludingRegex`)
+**Filters:**
 
-**Quick Wins Detection:**
+- `pageFilter`: Page URL expression
+- `queryFilter`: Query expression
+- `filterOperator`: Operator for `pageFilter` and `queryFilter`: `equals`, `contains`, `notEquals`, `notContains`, `includingRegex`, `excludingRegex`
+- `regexFilter`: RE2 expression that queries must match
+- `countryFilter`: ISO 3166-1 alpha-3 country code, such as `USA`
+- `deviceFilter`: `DESKTOP`, `MOBILE`, `TABLET`
+- `searchAppearanceFilter`: A value from the `searchAppearance` dimension
+- `brandedClassificationFilter`: `BRANDED` or `NON_BRANDED`. You cannot combine it with a query filter
 
-- `detectQuickWins`: Enable automatic detection of optimization opportunities (default: `false`)
-- `quickWinsConfig`: Configuration for quick wins detection:
-  - `positionRange`: Position range to consider (default: `[4, 20]`)
-  - `minImpressions`: Minimum impressions threshold (default: `100`)
-  - `minCtr`: Minimum CTR percentage (default: `1`)
+**Limits from Google:**
 
-**Example - Basic Query:**
+- The `hour` dimension uses `hourly_all`. The server selects it for you.
+- Google returns up to 10 days of hourly data.
+- `webMultimodal` cannot be grouped by `query`.
 
-```json
-{
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
-  "dimensions": "query,page",
-  "rowLimit": 5000
-}
-```
-
-**Example - Advanced Filtering with Regex:**
+**Example: Filter with a regular expression**
 
 ```json
 {
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
+  "siteUrl": "https://example.com/",
+  "startDate": "2026-01-01",
+  "endDate": "2026-01-31",
   "dimensions": "page,query",
-  "queryFilter": "regex:(AI|machine learning|ML)",
-  "filterOperator": "includingRegex",
+  "regexFilter": "(AI|machine learning|ML)",
   "deviceFilter": "MOBILE",
   "rowLimit": 10000
 }
 ```
 
-**Example - Quick Wins Detection:**
+**Example: Read the next page**
+
+If `pagination.hasMore` is `true`, send `pagination.nextStartRow` as `startRow`:
 
 ```json
 {
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
-  "dimensions": "query,page",
-  "detectQuickWins": true,
-  "quickWinsConfig": {
-    "positionRange": [4, 15],
-    "minImpressions": 500,
-    "minCtr": 2
-  }
+  "siteUrl": "https://example.com/",
+  "startDate": "2026-01-01",
+  "endDate": "2026-01-31",
+  "dimensions": "query",
+  "rowLimit": 25000,
+  "startRow": 25000
 }
 ```
+
+### SEO analysis
+
+These tools run fixed calculations on your Search Console data. They do not use a model or third-party benchmarks.
+
+| Tool | What it finds |
+|---|---|
+| `detect_quick_wins` | Queries in positions 4 to 10 with a low CTR |
+| `detect_traffic_drops` | Pages that lost clicks, with a likely cause |
+| `detect_content_decay` | Pages whose clicks fell in each consecutive window |
+| `find_cannibalization` | Queries where several pages compete for impressions |
+| `find_ctr_opportunities` | Query and page pairs below the site's median CTR at the same position |
+| `brand_split` | Branded and non-branded traffic, using your brand terms |
+
+Google does not report anonymized queries in query rows, so query-level totals can be lower than property totals. `brand_split` reports the difference as `unattributed`.
+
+If a tool reads `maxRows` rows, it sets `dataTruncated` to `true`. A page or query that is missing from truncated data is counted in `unknownDueToTruncation`. It is not reported as lost. To include more rows, increase `maxRows`.
+
+These tools analyze the exact property in `siteUrl`. They do not fall back to a domain property. `multi_site_overview` does not add metrics across properties, because a domain property and its URL-prefix properties can overlap.
+
+**Example: Find traffic drops**
+
+```json
+{
+  "siteUrl": "sc-domain:example.com",
+  "startDate": "2026-02-01",
+  "endDate": "2026-02-28",
+  "minDropPct": 25,
+  "limit": 20
+}
+```
+
+### Indexing
+
+| Tool | What it does |
+|---|---|
+| `index_inspect` | Inspects one URL |
+| `batch_url_inspect` | Inspects up to 100 URLs. It stops and returns partial results if Google reports a quota error |
+
+Google allows 2,000 inspections per site per day and 600 per minute.
 
 ### Sitemap and site tools
 
@@ -226,6 +292,22 @@ Get comprehensive search performance data from Google Search Console with enhanc
 | `list_sites` | Lists the properties the account can see, with its permission level | No |
 | `add_site` | Adds a property. It still has to be verified | Yes |
 | `delete_site` | Removes a property from the account | Yes |
+
+## Prompts
+
+| Prompt | Arguments | Result |
+|---|---|---|
+| `weekly_seo_report` | `siteUrl`, optional `brandTerms` | A weekly report with changes, risks, and actions |
+| `diagnose_traffic_drop` | `siteUrl`, optional `days` | Likely causes of a traffic change, with evidence |
+| `indexing_audit` | `siteUrl`, optional `urls` | Index status, canonical, robots, and sitemap issues |
+
+## Development
+
+```bash
+pnpm install
+pnpm run build
+pnpm test
+```
 
 ## License
 

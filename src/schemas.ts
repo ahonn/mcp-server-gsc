@@ -1,5 +1,47 @@
 import { z } from 'zod';
 
+const DIMENSIONS = [
+  'query',
+  'page',
+  'country',
+  'device',
+  'date',
+  'hour',
+  'searchAppearance',
+  'brandedClassification',
+] as const;
+
+const SEARCH_TYPES = [
+  'web',
+  'image',
+  'video',
+  'news',
+  'discover',
+  'googleNews',
+  'webMultimodal',
+] as const;
+
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format');
+
+const SearchTypeSchema = z
+  .enum(SEARCH_TYPES)
+  .optional()
+  .describe(
+    'Search type: web (default), image, video, news, discover, googleNews, or webMultimodal. Google does not allow grouping webMultimodal by query',
+  );
+
+const MaxRowsSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(100000)
+  .default(25000)
+  .describe('Maximum rows to read from Google for the analysis. The server pages through results.');
+
+const LimitSchema = z.number().int().min(1).max(500).default(50).describe('Maximum items to return');
+
 export const GSCBaseSchema = z.object({
   siteUrl: z
     .string()
@@ -8,38 +50,75 @@ export const GSCBaseSchema = z.object({
     ),
 });
 
-export const SearchAnalyticsSchema = GSCBaseSchema.extend({
-  startDate: z.string().describe('Start date in YYYY-MM-DD format'),
-  endDate: z.string().describe('End date in YYYY-MM-DD format'),
+const DateRangeSchema = GSCBaseSchema.extend({
+  startDate: DateSchema.describe('Start date in YYYY-MM-DD format'),
+  endDate: DateSchema.describe('End date in YYYY-MM-DD format'),
+});
+
+const ComparisonRangeShape = {
+  previousStartDate: DateSchema.optional().describe(
+    'Start of the comparison period. Defaults to the period of equal length before startDate',
+  ),
+  previousEndDate: DateSchema.optional().describe(
+    'End of the comparison period. Set it together with previousStartDate',
+  ),
+};
+
+export const SearchAnalyticsSchema = DateRangeSchema.extend({
   dimensions: z
     .string()
     .transform((val) => val.split(',').map((d) => d.trim()))
-    .refine((val) =>
-      val.every((d) => ['query', 'page', 'country', 'device', 'date', 'searchAppearance'].includes(d)),
-    )
+    .refine((val) => val.every((d) => (DIMENSIONS as readonly string[]).includes(d)), {
+      message: `Dimensions must be from: ${DIMENSIONS.join(', ')}`,
+    })
     .optional()
-    .describe(
-      'Comma-separated list of dimensions to break down results by, such as query, page, country, device, date, searchAppearance',
-    ),
-  type: z
-    .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
-    .optional()
-    .describe('Type of search to filter by, such as web, image, video, news, discover, googleNews'),
+    .describe(`Comma-separated list of dimensions: ${DIMENSIONS.join(', ')}`),
+  type: SearchTypeSchema,
   aggregationType: z
     .enum(['auto', 'byNewsShowcasePanel', 'byProperty', 'byPage'])
     .optional()
     .describe('Type of aggregation, such as auto, byNewsShowcasePanel, byProperty, byPage'),
-  rowLimit: z.number().min(1).max(25000).default(1000).describe('Maximum number of rows to return (up to 25,000 for enhanced performance)'),
-  pageFilter: z.string().optional().describe('Filter by a specific page URL. Use with filterOperator.'),
-  queryFilter: z.string().optional().describe('Filter by a specific query string. Use with filterOperator.'),
+  dataState: z
+    .enum(['final', 'all', 'hourly_all'])
+    .optional()
+    .describe(
+      'Data freshness. final (Google default) has finalized data, all adds fresh data, hourly_all is for the hour dimension. The hour dimension selects hourly_all automatically',
+    ),
+  rowLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(25000)
+    .default(1000)
+    .describe('Maximum rows in this response (1 to 25,000)'),
+  startRow: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe('Zero-based row offset. Use pagination.nextStartRow from the previous response'),
+  pageFilter: z.string().optional().describe('Filter by page URL. Use with filterOperator.'),
+  queryFilter: z.string().optional().describe('Filter by query string. Use with filterOperator.'),
   countryFilter: z.string().optional().describe('Filter by a country using ISO 3166-1 alpha-3 code (e.g., USA, CHN).'),
   deviceFilter: z.enum(['DESKTOP', 'MOBILE', 'TABLET']).optional().describe('Filter by device type.'),
+  searchAppearanceFilter: z
+    .string()
+    .optional()
+    .describe('Filter by a search appearance value. Group by searchAppearance to list valid values.'),
+  brandedClassificationFilter: z
+    .string()
+    .optional()
+    .describe(
+      'Filter by a brandedClassification value. Group by brandedClassification to list valid values. Cannot be combined with a query filter.',
+    ),
   filterOperator: z
     .enum(['equals', 'contains', 'notEquals', 'notContains', 'includingRegex', 'excludingRegex'])
     .default('equals')
+    .describe('Operator for pageFilter and queryFilter. Defaults to "equals".'),
+  regexFilter: z
+    .string()
     .optional()
-    .describe('Operator for page and query filters. Defaults to "equals". Enhanced with regex support.'),
-  regexFilter: z.string().optional().describe('Advanced regex filter for intelligent query matching'),
+    .describe('RE2 regular expression that queries must match. Added to the other filters.'),
 });
 
 export const IndexInspectSchema = GSCBaseSchema.extend({
@@ -55,6 +134,15 @@ export const IndexInspectSchema = GSCBaseSchema.extend({
     .describe(
       'An IETF BCP-47 language code representing the language of the requested translated issue messages, such as "en-US" or "de-CH". Default is "en-US"',
     ),
+});
+
+export const BatchUrlInspectSchema = GSCBaseSchema.extend({
+  inspectionUrls: z
+    .array(z.string())
+    .min(1)
+    .max(100)
+    .describe('1 to 100 fully-qualified URLs under the property. Google allows 2,000 inspections per site per day.'),
+  languageCode: z.string().default('en-US').describe('IETF BCP-47 language code for issue messages'),
 });
 
 export const ListSitemapsSchema = z.object({
@@ -107,10 +195,10 @@ export const SiteSchema = z.object({
     ),
 });
 
+export const ListSitesSchema = z.object({});
+
 // Enhanced Quick Wins Detection Schema
-export const QuickWinsDetectionSchema = GSCBaseSchema.extend({
-  startDate: z.string().describe('Start date in YYYY-MM-DD format'),
-  endDate: z.string().describe('End date in YYYY-MM-DD format'),
+export const QuickWinsDetectionSchema = DateRangeSchema.extend({
   minImpressions: z.number().default(50).describe('Minimum impressions threshold for quick wins'),
   maxCtr: z.number().default(2.0).describe('Maximum CTR percentage for quick wins detection'),
   positionRangeMin: z.number().default(4).describe('Minimum position for quick wins (default: 4)'),
@@ -127,7 +215,90 @@ export const EnhancedSearchAnalyticsSchema = SearchAnalyticsSchema.extend({
     maxCtr: true,
     positionRangeMin: true,
     positionRangeMax: true,
-  }).optional().describe('Custom thresholds for quick wins detection'),
+  })
+    .optional()
+    .describe('Custom thresholds for quick wins detection'),
+});
+
+export const ComparePeriodsSchema = DateRangeSchema.extend({
+  ...ComparisonRangeShape,
+  dimension: z
+    .enum(['query', 'page', 'country', 'device'])
+    .default('page')
+    .describe('Dimension to compare'),
+  type: SearchTypeSchema,
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
+});
+
+export const TrafficDropsSchema = DateRangeSchema.extend({
+  ...ComparisonRangeShape,
+  type: SearchTypeSchema,
+  minPreviousClicks: z.number().min(0).default(10).describe('Ignore pages below this click count in the previous period'),
+  minDropPct: z.number().min(0).max(100).default(20).describe('Minimum click decline in percent'),
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
+});
+
+export const ContentDecaySchema = GSCBaseSchema.extend({
+  endDate: DateSchema.describe('Last date of the newest window in YYYY-MM-DD format'),
+  periodDays: z.number().int().min(7).max(90).default(28).describe('Length of each window in days'),
+  periods: z.number().int().min(3).max(6).default(3).describe('Number of consecutive windows'),
+  type: SearchTypeSchema,
+  minPeakClicks: z.number().min(0).default(20).describe('Minimum clicks in the oldest window'),
+  minDeclinePct: z.number().min(0).max(100).default(20).describe('Minimum total click decline in percent'),
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
+});
+
+export const CannibalizationSchema = DateRangeSchema.extend({
+  type: SearchTypeSchema,
+  minQueryImpressions: z.number().min(0).default(100).describe('Minimum total impressions for a query'),
+  minPageShare: z
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.1)
+    .describe('Minimum share of the query impressions for a page to count as competing (0 to 1)'),
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
+});
+
+export const CtrOpportunitiesSchema = DateRangeSchema.extend({
+  type: SearchTypeSchema,
+  minImpressions: z.number().min(0).default(100).describe('Minimum impressions for a query and page pair'),
+  maxPosition: z.number().int().min(1).max(100).default(20).describe('Ignore rows ranked below this position'),
+  minCtrGapPct: z
+    .number()
+    .min(0)
+    .max(100)
+    .default(30)
+    .describe('Minimum CTR shortfall against the median CTR of the same position on this site, in percent'),
+  limit: LimitSchema,
+  maxRows: MaxRowsSchema,
+});
+
+export const BrandSplitSchema = DateRangeSchema.extend({
+  brandTerms: z
+    .array(z.string().trim().min(1))
+    .min(1)
+    .describe('Brand terms. A query is branded if it contains one of them, ignoring case'),
+  type: SearchTypeSchema,
+  topQueries: z.number().int().min(0).max(100).default(10).describe('Top queries to return for each segment'),
+  maxRows: MaxRowsSchema,
+});
+
+export const MultiSiteOverviewSchema = z.object({
+  startDate: DateSchema.describe('Start date in YYYY-MM-DD format'),
+  endDate: DateSchema.describe('End date in YYYY-MM-DD format'),
+  ...ComparisonRangeShape,
+  siteUrls: z
+    .array(z.string())
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('Properties to include. Defaults to all properties the account can access'),
+  type: SearchTypeSchema,
 });
 
 export type SearchAnalytics = z.infer<typeof SearchAnalyticsSchema>;

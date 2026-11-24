@@ -1,0 +1,74 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcp-server-gsc",
+  "display_name": "Google Search Console",
+  "version": "0.3.0",
+  "description": "Query, compare, and diagnose Google Search Console data from an MCP client",
+  "author": {
+    "name": "Yuexun Jiang",
+    "url": "https://github.com/ahonn"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahonn/mcp-server-gsc.git"
+  },
+  "homepage": "https://github.com/ahonn/mcp-server-gsc",
+  "support": "https://github.com/ahonn/mcp-server-gsc/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${user_config.credentials_file}",
+        "GSC_ALLOW_WRITE": "${user_config.allow_write}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "list_sites", "description": "List Search Console properties" },
+    { "name": "search_analytics", "description": "Query search performance data" },
+    { "name": "enhanced_search_analytics", "description": "Query performance data with quick wins" },
+    { "name": "detect_quick_wins", "description": "Find high-ranking queries with a low CTR" },
+    { "name": "compare_periods", "description": "Compare two date ranges" },
+    { "name": "detect_traffic_drops", "description": "Find pages that lost clicks and likely causes" },
+    { "name": "detect_content_decay", "description": "Find pages with a sustained click decline" },
+    { "name": "find_cannibalization", "description": "Find pages that compete for one query" },
+    { "name": "find_ctr_opportunities", "description": "Find rows below the site's CTR benchmark" },
+    { "name": "brand_split", "description": "Split branded and non-branded traffic" },
+    { "name": "multi_site_overview", "description": "Compare performance across properties" },
+    { "name": "index_inspect", "description": "Inspect the index status of a URL" },
+    { "name": "batch_url_inspect", "description": "Inspect up to 100 URLs with rate limiting" },
+    { "name": "list_sitemaps", "description": "List sitemaps" },
+    { "name": "get_sitemap", "description": "Get one sitemap" },
+    { "name": "submit_sitemap", "description": "Submit a sitemap (needs write access)" },
+    { "name": "delete_sitemap", "description": "Remove a sitemap (needs write access)" },
+    { "name": "add_site", "description": "Add a property (needs write access)" },
+    { "name": "delete_site", "description": "Remove a property (needs write access)" }
+  ],
+  "prompts_generated": true,
+  "keywords": ["google", "search-console", "seo", "mcp"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "credentials_file": {
+      "type": "file",
+      "title": "Google credentials file",
+      "description": "Service account key JSON file, or an OAuth token file saved by mcp-server-gsc auth login",
+      "required": true
+    },
+    "allow_write": {
+      "type": "boolean",
+      "title": "Allow write tools",
+      "description": "Allow tools that submit or delete sitemaps and add or remove properties",
+      "default": false,
+      "required": false
+    }
+  }
+}

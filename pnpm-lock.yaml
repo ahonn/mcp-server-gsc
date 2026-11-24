@@ -8,15 +8,12 @@ importers:
 
   .:
     dependencies:
-      '@google-cloud/local-auth':
-        specifier: ^3.0.1
-        version: 3.0.1(supports-color@10.2.2)
       '@hono/mcp':
-        specifier: ^0.2.5
-        version: 0.2.5(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@3.25.76))(hono-rate-limiter@0.4.2(hono@4.13.20))(hono@4.13.20)(zod@3.25.76)
+        specifier: ^0.3.5
+        version: 0.3.5(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7))(hono-rate-limiter@0.5.4(hono@4.13.20))(hono@4.13.20)(zod@4.6.7)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
-        version: 1.32.2(supports-color@10.2.2)(zod@3.25.76)
+        version: 1.32.2(supports-color@10.2.2)(zod@4.6.7)
       google-auth-library:
         specifier: ^9.15.1
         version: 9.15.1(supports-color@10.2.2)
@@ -27,11 +24,8 @@ importers:
         specifier: ^4.13.20
         version: 4.13.20
       zod:
-        specifier: ^3.25.76
-        version: 3.25.76
-      zod-to-json-schema:
-        specifier: ^3.25.2
-        version: 3.25.2(zod@3.25.76)
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.10.1
@@ -413,16 +407,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@google-cloud/local-auth@3.0.1':
-    resolution: {integrity: sha512-YJ3GFbksfHyEarbVHPSCzhKpjbnlAhdzg2SEf79l6ODukrSM1qUOqfopY232Xkw26huKSndyzmJz+A6b2WYn7Q==}
-    engines: {node: '>=14.0.0'}
-
-  '@hono/mcp@0.2.5':
-    resolution: {integrity: sha512-JsaJes7VlNvUrUQ9j2b9C13xjFLvyKQY515aWtsdJ9cwhBmWz5od2yUCbDu7cX38GeADmlLmpu4BKNNAV6G27w==}
+  '@hono/mcp@0.3.5':
+    resolution: {integrity: sha512-CquYSjbl9BuprbMMjvgO2owK7kdEA9wh2CJqAjn1Zk2QAM24y2OBSv5gz5O8jHCp39ae4dgIxOSonEVR+2PpJQ==}
     peerDependencies:
-      '@modelcontextprotocol/sdk': ^1.25.1
+      '@modelcontextprotocol/sdk': ^1.29.0
       hono: '*'
-      hono-rate-limiter: ^0.4.2
+      hono-rate-limiter: ^0.5.4
       zod: ^3.25.0 || ^4.0.0
 
   '@hono/node-server@2.1.11':
@@ -641,10 +631,6 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
-
-  arrify@2.0.1:
-    resolution: {integrity: sha512-3duEwti880xqi4eAMN8AyR4a0ByT90zoYdLlevfrvU43vb0YZwZVfxOgxWrLXXXpyugL0hNZc9G6BiB5B3nUug==}
-    engines: {node: '>=8'}
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -887,10 +873,14 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono-rate-limiter@0.4.2:
-    resolution: {integrity: sha512-AAtFqgADyrmbDijcRTT/HJfwqfvhalya2Zo+MgfdrMPas3zSMD8SU03cv+ZsYwRU1swv7zgVt0shwN059yzhjw==}
+  hono-rate-limiter@0.5.4:
+    resolution: {integrity: sha512-P3/cscAmz1hA+MuM+Hn9gP/EyO2zWv2aXIFkVYuLZkPzrPa4oaWdVCS94vyDlsNBgeMnE/Hr2+LznIKQxrF0ng==}
     peerDependencies:
-      hono: ^4.1.1
+      hono: ^4.10.8
+      unstorage: ^1.17.3
+    peerDependenciesMeta:
+      unstorage:
+        optional: true
 
   hono@4.13.20:
     resolution: {integrity: sha512-xo6gecEJQ+CjTtOUUbcLHE8CdRKMeF4qITe+DT+OhFnSUmZR/ZBa9XavAfiGh4HlukmlaHFdaK4dz5tkTYFNmA==}
@@ -931,20 +921,11 @@ packages:
     resolution: {integrity: sha512-UfoeMA6fIJ8wTYFEUjelnaGI67v6+N7qXJEvQuIGa99l4xsCruSYOVSQ0uPANn4dAzm8lkYPaKLrrijLq7x23w==}
     engines: {node: '>= 0.4'}
 
-  is-docker@2.2.1:
-    resolution: {integrity: sha512-F+i2BKsFrH66iaUFc0woD8sLy8getkwTwtOBjvs56Cx4CgJDeKQeqfz8wAYiSb8JOprWhHH5p77PbmYCvvUuXQ==}
-    engines: {node: '>=8'}
-    hasBin: true
-
   is-promise@4.0.0:
     resolution: {integrity: sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==}
 
   is-stream@2.0.1:
     resolution: {integrity: sha512-hFoiJiTl63nn+kstHGBtewWSKnQLpyb155KHheA1l39uvtO9nWIop1p3udqPcUd/xbF1VLMO4n7OI6p7RbngDg==}
-    engines: {node: '>=8'}
-
-  is-wsl@2.2.0:
-    resolution: {integrity: sha512-fKzAra0rGJUUBwGBgNkHZuToZcn+TtXHpeCgmkMJMMYx1sQDYaCSyjJBSCa2nH1DGm7s3n1oBnohoVTBaN7Lww==}
     engines: {node: '>=8'}
 
   isexe@2.0.0:
@@ -1034,10 +1015,6 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
-  open@7.4.2:
-    resolution: {integrity: sha512-MVHddDVweXZF3awtlAS+6pgKLlm/JgxZ90+/NBurBoQctVOOB/zDdVjcyPzQ+0laDGbsWgrRkflI65sQeOgT9Q==}
-    engines: {node: '>=8'}
-
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
@@ -1120,9 +1097,6 @@ packages:
   serve-static@2.2.1:
     resolution: {integrity: sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==}
     engines: {node: '>= 18'}
-
-  server-destroy@1.0.1:
-    resolution: {integrity: sha512-rb+9B5YBIEzYcD6x2VKidaa+cqYBJQKnU4oe4E3ANwRRN56yk/ua1YCJT1n21NTS8w6CcOclAKNP3PhdCXKYtQ==}
 
   setprototypeof@1.2.0:
     resolution: {integrity: sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==}
@@ -1279,8 +1253,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
@@ -1472,23 +1446,13 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@google-cloud/local-auth@3.0.1(supports-color@10.2.2)':
+  '@hono/mcp@0.3.5(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7))(hono-rate-limiter@0.5.4(hono@4.13.20))(hono@4.13.20)(zod@4.6.7)':
     dependencies:
-      arrify: 2.0.1
-      google-auth-library: 9.15.1(supports-color@10.2.2)
-      open: 7.4.2
-      server-destroy: 1.0.1
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
-
-  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@3.25.76))(hono-rate-limiter@0.4.2(hono@4.13.20))(hono@4.13.20)(zod@3.25.76)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.32.2(supports-color@10.2.2)(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.32.2(supports-color@10.2.2)(zod@4.6.7)
       hono: 4.13.20
-      hono-rate-limiter: 0.4.2(hono@4.13.20)
+      hono-rate-limiter: 0.5.4(hono@4.13.20)
       pkce-challenge: 5.0.2
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@hono/node-server@2.1.11(hono@4.13.20)':
     dependencies:
@@ -1599,7 +1563,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
       '@hono/node-server': 2.1.11(hono@4.13.20)
       ajv: 8.20.0
@@ -1616,8 +1580,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.2
       raw-body: 3.0.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
@@ -1658,8 +1622,6 @@ snapshots:
       fast-uri: 3.1.9
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
-
-  arrify@2.0.1: {}
 
   balanced-match@1.0.2: {}
 
@@ -2003,7 +1965,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono-rate-limiter@0.4.2(hono@4.13.20):
+  hono-rate-limiter@0.5.4(hono@4.13.20):
     dependencies:
       hono: 4.13.20
 
@@ -2045,15 +2007,9 @@ snapshots:
     dependencies:
       hasown: 2.0.2
 
-  is-docker@2.2.1: {}
-
   is-promise@4.0.0: {}
 
   is-stream@2.0.1: {}
-
-  is-wsl@2.2.0:
-    dependencies:
-      is-docker: 2.2.1
 
   isexe@2.0.0: {}
 
@@ -2131,11 +2087,6 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
-
-  open@7.4.2:
-    dependencies:
-      is-docker: 2.2.1
-      is-wsl: 2.2.0
 
   parseurl@1.3.3: {}
 
@@ -2226,8 +2177,6 @@ snapshots:
       send: 1.2.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
-
-  server-destroy@1.0.1: {}
 
   setprototypeof@1.2.0: {}
 
@@ -2403,8 +2352,8 @@ snapshots:
       cookie: 1.1.1
       youch-core: 0.3.3
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.6.7):
     dependencies:
-      zod: 3.25.76
+      zod: 4.6.7
 
-  zod@3.25.76: {}
+  zod@4.6.7: {}

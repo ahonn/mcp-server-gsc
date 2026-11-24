@@ -1,8 +1,11 @@
 import { google, searchconsole_v1, webmasters_v3 } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
+import { detectQuickWins, type GscRow } from './analysis.js';
 
-type SearchanalyticsQueryRequest =
-  webmasters_v3.Params$Resource$Searchanalytics$Query['requestBody'];
+// The API replaced `searchType` with `type`, but the generated client types lack it.
+export type SearchanalyticsQueryRequest = webmasters_v3.Schema$SearchAnalyticsQueryRequest & {
+  type?: string;
+};
 type ListSitemapsRequest = webmasters_v3.Params$Resource$Sitemaps$List;
 type GetSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Get;
 type SubmitSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Submit;
@@ -10,8 +13,24 @@ type DeleteSitemapRequest = webmasters_v3.Params$Resource$Sitemaps$Delete;
 type IndexInspectRequest =
   searchconsole_v1.Params$Resource$Urlinspection$Index$Inspect['requestBody'];
 
-const READONLY_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
-const READ_WRITE_SCOPE = 'https://www.googleapis.com/auth/webmasters';
+export const READONLY_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
+export const READ_WRITE_SCOPE = 'https://www.googleapis.com/auth/webmasters';
+
+const MAX_ROWS_PER_REQUEST = 25000;
+
+// These POST endpoints only read data, so they are safe to retry.
+const READ_RETRY_OPTIONS = {
+  retry: true,
+  retryConfig: {
+    retry: 3,
+    noResponseRetries: 2,
+    httpMethodsToRetry: ['GET', 'POST'],
+    statusCodesToRetry: [
+      [429, 429],
+      [500, 599],
+    ],
+  },
+};
 
 export interface SearchConsoleOptions {
   /**
@@ -19,6 +38,17 @@ export interface SearchConsoleOptions {
    * submit_sitemap, delete_sitemap, add_site and delete_site. Off by default.
    */
   allowWrite?: boolean;
+}
+
+/** Returns the domain property for a URL-prefix site, or null if none applies. */
+function toDomainProperty(siteUrl: string | null | undefined): string | null {
+  if (!siteUrl || siteUrl.startsWith('sc-domain:')) return null;
+  try {
+    const { protocol, hostname } = new URL(siteUrl);
+    return protocol === 'http:' || protocol === 'https:' ? `sc-domain:${hostname}` : null;
+  } catch {
+    return null;
+  }
 }
 
 export class SearchConsoleService {
@@ -62,47 +92,70 @@ export class SearchConsoleService {
     } as searchconsole_v1.Options);
   }
 
-  private normalizeUrl(url: string): string {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
-      return `sc-domain:${parsedUrl.hostname}`;
-    }
-    return `https://${url}`;
-  }
-
-  private async handlePermissionError<T>(
-    operation: () => Promise<T>,
-    fallbackOperation: () => Promise<T>,
+  /**
+   * Retries a read on the matching domain property after a permission error.
+   * Write methods must not use this: the fallback targets a different property
+   * than the one the caller named.
+   */
+  private async readWithSiteFallback<T>(
+    siteUrl: string | null | undefined,
+    read: (site: string | null | undefined) => Promise<T>,
   ): Promise<T> {
     try {
-      return await operation();
+      return await read(siteUrl);
     } catch (err) {
-      if (err instanceof Error && err.message.toLowerCase().includes('permission')) {
-        return await fallbackOperation();
+      const fallback = toDomainProperty(siteUrl);
+      if (fallback && err instanceof Error && err.message.toLowerCase().includes('permission')) {
+        return await read(fallback);
       }
       throw err;
     }
   }
 
-  async searchAnalytics(siteUrl: string, requestBody: SearchanalyticsQueryRequest) {
+  async searchAnalytics(
+    siteUrl: string,
+    requestBody: SearchanalyticsQueryRequest,
+    options: { exactSite?: boolean } = {},
+  ) {
     const webmasters = await this.getWebmasters();
-    return this.handlePermissionError(
-      () => webmasters.searchanalytics.query({ siteUrl, requestBody }),
-      () => webmasters.searchanalytics.query({ siteUrl: this.normalizeUrl(siteUrl), requestBody }),
-    );
+    const query = (site: string | null | undefined) =>
+      webmasters.searchanalytics.query({ siteUrl: site!, requestBody }, READ_RETRY_OPTIONS);
+    // A domain property covers more URLs than a prefix, so analysis must not switch to it.
+    return options.exactSite ? query(siteUrl) : this.readWithSiteFallback(siteUrl, query);
+  }
+
+  /** Pages through results until Google returns an empty page or maxRows is reached. */
+  async queryAllRows(
+    siteUrl: string,
+    requestBody: SearchanalyticsQueryRequest,
+    maxRows: number,
+  ): Promise<GscRow[]> {
+    const rows: GscRow[] = [];
+    while (rows.length < maxRows) {
+      const rowLimit = Math.min(MAX_ROWS_PER_REQUEST, maxRows - rows.length);
+      const response = await this.searchAnalytics(
+        siteUrl,
+        { ...requestBody, rowLimit, startRow: rows.length },
+        { exactSite: true },
+      );
+      const page = response.data.rows ?? [];
+      // Google documents an empty page as the end. A short page does not prove it.
+      if (page.length === 0) break;
+      rows.push(...page);
+    }
+    return rows;
   }
 
   /**
    * Enhanced Search Analytics with advanced features
    * - Supports up to 25,000 rows (vs 1,000 default)
-   * - Regex filtering capabilities
    * - Quick wins detection
    */
   async enhancedSearchAnalytics(
-    siteUrl: string, 
+    siteUrl: string,
     requestBody: SearchanalyticsQueryRequest,
     options: {
-      regexFilter?: string;
+      regexFilterApplied?: boolean;
       enableQuickWins?: boolean;
       quickWinsThresholds?: {
         minImpressions?: number;
@@ -110,107 +163,30 @@ export class SearchConsoleService {
         positionRangeMin?: number;
         positionRangeMax?: number;
       };
-    } = {}
+    } = {},
   ) {
-    // Ensure requestBody is defined
     if (!requestBody) {
       throw new Error('Request body is required');
     }
 
-    // Apply regex filter if provided
-    if (options.regexFilter && requestBody.dimensions?.includes('query')) {
-      requestBody.dimensionFilterGroups = [
-        ...(requestBody.dimensionFilterGroups || []),
-        {
-          groupType: 'and',
-          filters: [{
-            dimension: 'query',
-            operator: 'includingRegex',
-            expression: options.regexFilter
-          }]
-        }
-      ];
-    }
-
-    // Execute enhanced search analytics
     const result = await this.searchAnalytics(siteUrl, requestBody);
-    
-    // Apply quick wins detection if enabled
+
     if (options.enableQuickWins && result.data.rows) {
-      const quickWins = this.detectQuickWins(result.data.rows, options.quickWinsThresholds);
       return {
         ...result,
         data: {
           ...result.data,
-          quickWins: quickWins,
+          quickWins: detectQuickWins(result.data.rows, options.quickWinsThresholds),
           enhancedFeatures: {
-            regexFilterApplied: !!options.regexFilter,
+            regexFilterApplied: !!options.regexFilterApplied,
             quickWinsEnabled: true,
-            rowLimit: requestBody.rowLimit || 1000
-          }
-        }
+            rowLimit: requestBody.rowLimit || 1000,
+          },
+        },
       };
     }
 
     return result;
-  }
-
-  /**
-   * Automatic Quick Wins Detection
-   * Identifies SEO optimization opportunities
-   */
-  private detectQuickWins(
-    rows: any[], 
-    thresholds: {
-      minImpressions?: number;
-      maxCtr?: number;
-      positionRangeMin?: number;
-      positionRangeMax?: number;
-    } = {}
-  ) {
-    const {
-      minImpressions = 50,
-      maxCtr = 2.0,
-      positionRangeMin = 4,
-      positionRangeMax = 10
-    } = thresholds;
-
-    return rows
-      .filter(row => {
-        const impressions = row.impressions || 0;
-        const ctr = (row.ctr || 0) * 100;
-        const position = row.position || 0;
-
-        return impressions >= minImpressions &&
-               ctr <= maxCtr &&
-               position >= positionRangeMin &&
-               position <= positionRangeMax;
-      })
-      .map(row => {
-        const impressions = row.impressions || 0;
-        const currentClicks = row.clicks || 0;
-        const currentCtr = (row.ctr || 0) * 100;
-        const position = row.position || 0;
-
-        // Calculate potential with 5% target CTR
-        const targetCtr = 5.0;
-        const potentialClicks = Math.round((impressions * targetCtr) / 100);
-        const additionalClicks = Math.max(0, potentialClicks - currentClicks);
-
-        return {
-          query: row.keys?.[0] || 'N/A',
-          page: row.keys?.[1] || 'N/A',
-          currentPosition: Number(position.toFixed(1)),
-          impressions: impressions,
-          currentClicks: currentClicks,
-          currentCtr: Number(currentCtr.toFixed(2)),
-          potentialClicks: potentialClicks,
-          additionalClicks: additionalClicks,
-          opportunity: additionalClicks > 0 ? 'High' : 'Low',
-          optimizationNote: `Move from position ${position.toFixed(1)} to improve CTR`
-        };
-      })
-      .sort((a, b) => b.additionalClicks - a.additionalClicks);
   }
 
   async listSites() {
@@ -220,30 +196,18 @@ export class SearchConsoleService {
 
   async listSitemaps(requestBody: ListSitemapsRequest) {
     const webmasters = await this.getWebmasters();
-    return this.handlePermissionError(
-      () => webmasters.sitemaps.list(requestBody),
-      () =>
-        webmasters.sitemaps.list({
-          ...requestBody,
-          siteUrl: this.normalizeUrl(requestBody.siteUrl!),
-        }),
+    return this.readWithSiteFallback(requestBody.siteUrl, (site) =>
+      webmasters.sitemaps.list({ ...requestBody, siteUrl: site ?? undefined }),
     );
   }
 
   async getSitemap(requestBody: GetSitemapRequest) {
     const webmasters = await this.getWebmasters();
-    return this.handlePermissionError(
-      () => webmasters.sitemaps.get(requestBody),
-      () =>
-        webmasters.sitemaps.get({
-          ...requestBody,
-          siteUrl: this.normalizeUrl(requestBody.siteUrl!),
-        }),
+    return this.readWithSiteFallback(requestBody.siteUrl, (site) =>
+      webmasters.sitemaps.get({ ...requestBody, siteUrl: site ?? undefined }),
     );
   }
 
-  // Write methods must not use handlePermissionError: its fallback targets a
-  // different property (sc-domain:) than the one the caller named.
   async submitSitemap(requestBody: SubmitSitemapRequest) {
     const webmasters = await this.getWebmasters();
     return webmasters.sitemaps.submit(requestBody);
@@ -266,6 +230,6 @@ export class SearchConsoleService {
 
   async indexInspect(requestBody: IndexInspectRequest) {
     const searchConsole = await this.getSearchConsole();
-    return searchConsole.urlInspection.index.inspect({ requestBody });
+    return searchConsole.urlInspection.index.inspect({ requestBody }, READ_RETRY_OPTIONS);
   }
 }

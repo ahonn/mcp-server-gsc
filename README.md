@@ -72,6 +72,31 @@ To obtain Google Search Console API credentials:
 }
 ```
 
+### Write access (optional)
+
+By default the server asks Google for the read-only scope (`webmasters.readonly`), so it can't change anything in Search Console. To let it submit sitemaps and manage sites, set `GSC_ALLOW_WRITE=true`:
+
+```json
+{
+  "mcpServers": {
+    "gsc": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/credentials.json",
+        "GSC_ALLOW_WRITE": "true"
+      }
+    }
+  }
+}
+```
+
+The server then requests the `webmasters` scope. The service account needs Full or Owner permission on the property; a Restricted user can only read. For the remote server, set `GSC_ALLOW_WRITE` to `true` as a Worker variable.
+
+Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site` and `delete_site` return an error that says how to turn them on. Before this change `submit_sitemap` was listed but always failed with "Insufficient Permission", because the server only ever had the read-only scope.
+
+"Request indexing" from the URL Inspection page is not part of the Search Console API, so no tool here can do it. The URL Inspection API (`index_inspect`) only reads.
+
 ## Available Tools
 
 ### search_analytics
@@ -152,6 +177,18 @@ Get comprehensive search performance data from Google Search Console with enhanc
   }
 }
 ```
+
+### Sitemap and site tools
+
+| Tool | What it does | Needs write access |
+|---|---|---|
+| `list_sitemaps` | Lists the sitemaps of a property, with last submit and download time | No |
+| `get_sitemap` | Shows one sitemap | No |
+| `submit_sitemap` | Submits a sitemap. Google fetches it again within seconds | Yes |
+| `delete_sitemap` | Removes a sitemap from the property. Its URLs stay indexed | Yes |
+| `list_sites` | Lists the properties the account can see, with its permission level | No |
+| `add_site` | Adds a property. It still has to be verified | Yes |
+| `delete_site` | Removes a property from the account | Yes |
 
 ## License
 

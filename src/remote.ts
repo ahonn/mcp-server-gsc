@@ -8,6 +8,7 @@ type Bindings = {
   GOOGLE_CREDENTIALS: string;
   MCP_API_TOKEN?: string;
   CORS_ORIGIN?: string;
+  GSC_ALLOW_WRITE?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -32,7 +33,9 @@ app.all('/mcp', async (c) => {
     return c.json({ error: 'GOOGLE_CREDENTIALS secret is not configured' }, 500);
   }
 
-  const server = createServer(c.env.GOOGLE_CREDENTIALS);
+  const server = createServer(c.env.GOOGLE_CREDENTIALS, {
+    allowWrite: c.env.GSC_ALLOW_WRITE === 'true',
+  });
   const transport = new StreamableHTTPTransport({ sessionIdGenerator: undefined });
 
   transport.onclose = () => {

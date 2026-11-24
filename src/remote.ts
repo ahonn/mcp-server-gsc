@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { StreamableHTTPTransport } from '@hono/mcp';
@@ -20,10 +20,11 @@ app.use('/mcp', async (c, next) => {
 
 app.use('/mcp', async (c, next) => {
   const token = c.env.MCP_API_TOKEN;
-  if (token) {
-    return bearerAuth({ token })(c, next);
+  // Fail closed: the service account's Search Console data must never be public.
+  if (!token) {
+    return c.json({ error: 'MCP_API_TOKEN secret is not configured' }, 500);
   }
-  await next();
+  return bearerAuth({ token })(c as unknown as Context, next);
 });
 
 app.get('/health', (c) => c.json({ status: 'ok' }));

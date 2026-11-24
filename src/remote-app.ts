@@ -289,7 +289,8 @@ export function createRemoteApp(dependencies: RemoteAppDependencies) {
       const props: McpProps = { email: identity.email };
       const { redirectTo } = await oauth.completeAuthorization({
         request,
-        userId: `google:${identity.subject}`,
+        // The OAuth provider reserves ":" in user IDs.
+        userId: `google-${identity.subject}`,
         metadata: {},
         scope: request.scope,
         props,

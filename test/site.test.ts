@@ -69,6 +69,8 @@ function fakeOAuth(overrides: Partial<OAuthHelpers> = {}) {
       headers: new Headers(),
     }),
     completeAuthorization: async (options: { userId: string; props: unknown }) => {
+      // Matches the validation in @cloudflare/workers-oauth-provider.
+      if (!options.userId || options.userId.includes(':')) throw new TypeError('invalid userId');
       calls.completed = options;
       return { redirectTo: `${request.redirectUri}?code=mcp-code` };
     },
@@ -191,7 +193,7 @@ test('an expired consent renders locally', async () => {
 test('callback completes authorization for an allowed email', async () => {
   const { response, calls, tokenBody } = await callback(validClaims);
   assert.match(response.headers.get('location') ?? '', /code=mcp-code/);
-  assert.equal(calls.completed?.userId, 'google:sub-1');
+  assert.equal(calls.completed?.userId, 'google-sub-1');
   assert.deepEqual(calls.completed?.props, { email: 'owner@example.com' });
   assert.match(tokenBody, /code_verifier=verifier-1/);
   assert.doesNotMatch(JSON.stringify(calls.completed), /google-access/);

@@ -143,29 +143,48 @@ Without the flag, `submit_sitemap`, `delete_sitemap`, `add_site`, and `delete_si
 
 ### Remote Deployment (Cloudflare Workers)
 
-The remote server requires a bearer token. If `MCP_API_TOKEN` is not set, `/mcp` returns HTTP 500 and does not serve Search Console data.
+The remote server uses OAuth. MCP clients sign in with Google, and only email addresses in `ALLOWED_EMAILS` can connect. All allowed users share the Search Console access of one service account. If OAuth is not fully configured, `/mcp` returns HTTP 500 and does not serve Search Console data.
 
-1. Set the service account secret:
-
-   ```bash
-   wrangler secret put GOOGLE_CREDENTIALS
-   ```
-
-2. Set the bearer token secret:
+1. In Google Cloud, create an **OAuth client ID** of type **Web application**.
+2. Add `https://<your-domain>/callback` as an authorized redirect URI.
+3. Set the Worker secrets:
 
    ```bash
-   wrangler secret put MCP_API_TOKEN
+   wrangler secret put GOOGLE_CREDENTIALS          # Service account JSON
+   wrangler secret put GOOGLE_OAUTH_CLIENT_ID
+   wrangler secret put GOOGLE_OAUTH_CLIENT_SECRET
+   wrangler secret put ALLOWED_EMAILS              # alice@example.com,bob@example.com
+   wrangler secret put PUBLIC_URL                  # https://<your-domain>
    ```
 
-3. Deploy the Worker:
+4. Deploy the Worker. Wrangler creates the `OAUTH_KV` namespace on the first deployment:
 
    ```bash
    pnpm run deploy
    ```
 
-4. Configure each client to send `Authorization: Bearer <token>` to `https://<your-worker>.workers.dev/mcp`.
+5. Add `https://<your-domain>/mcp` to your MCP client and complete the sign-in.
 
-The Worker also serves a public home page at `/` and a privacy policy at `/privacy`. These pages do not need the bearer token and contain no Search Console data.
+Example for Claude Code:
+
+```bash
+claude mcp add --scope user --transport http gsc https://<your-domain>/mcp
+```
+
+Then run `/mcp` in Claude Code and select the server to sign in.
+
+Example for Codex:
+
+```toml
+[mcp_servers.gsc]
+url = "https://<your-domain>/mcp"
+```
+
+Then run `codex mcp login gsc`.
+
+To end a user's access at once, remove the email address from `ALLOWED_EMAILS`.
+
+The Worker also serves a public home page at `/` and a privacy policy at `/privacy`. These pages contain no Search Console data.
 
 ## Available Tools
 

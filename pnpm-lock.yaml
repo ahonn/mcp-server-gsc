@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@cloudflare/workers-oauth-provider':
+        specifier: 1.2.4
+        version: 1.2.4
       '@hono/mcp':
         specifier: ^0.3.5
         version: 0.3.5(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7))(hono-rate-limiter@0.5.4(hono@4.13.20))(hono@4.13.20)(zod@4.6.7)
@@ -87,6 +90,9 @@ packages:
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
+
+  '@cloudflare/workers-oauth-provider@1.2.4':
+    resolution: {integrity: sha512-ayo6Z8DBHdAxwDpplFU8BrEoxoSn6wNo+E7ypTENRHUOc8R89A8/+nZ+a8pMZjjXzF0JXfpYXhw/7qqG+DC18Q==}
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -1280,6 +1286,8 @@ snapshots:
 
   '@cloudflare/workerd-windows-64@1.20260219.0':
     optional: true
+
+  '@cloudflare/workers-oauth-provider@1.2.4': {}
 
   '@cspotcode/source-map-support@0.8.1':
     dependencies:

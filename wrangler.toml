@@ -2,3 +2,7 @@ name = "mcp-server-gsc"
 main = "src/remote.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
+
+# Stores OAuth clients and grants. Wrangler provisions it on the first deployment.
+[[kv_namespaces]]
+binding = "OAUTH_KV"

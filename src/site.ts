@@ -25,7 +25,7 @@ const STYLES = `
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #171816;
-    --text: #ececE8;
+    --text: #ecece8;
     --muted: #a7a9a2;
     --line: #363833;
     --link: #8ab8ff;
@@ -46,6 +46,18 @@ p, ul { margin: 0 0 14px; }
 ul { padding-left: 22px; }
 a { color: var(--link); }
 code { font-size: 0.92em; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+button {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+button[value="approve"] { border-color: var(--link); background: var(--link); color: var(--background); }
 .lead { color: var(--muted); font-size: 18px; }
 footer {
   margin-top: 48px;
@@ -56,7 +68,7 @@ footer {
 }
 `;
 
-function page(title: string, description: string, body: string): string {
+export function renderPage(title: string, description: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -77,7 +89,7 @@ ${body}
 `;
 }
 
-export const HOME_PAGE = page(
+export const HOME_PAGE = renderPage(
   'mcp-server-gsc',
   'An open source MCP server for Google Search Console data.',
   `<h1>mcp-server-gsc</h1>
@@ -93,12 +105,13 @@ export const HOME_PAGE = page(
 
 <h2>Why it asks for Google access</h2>
 <p>The app uses the <code>webmasters.readonly</code> scope to read the Search Console properties that your account can access. It requests the <code>webmasters</code> scope only if you run the login command with <code>--write</code>.</p>
+<p>A hosted deployment uses Google sign-in only to confirm your email address. It requests the <code>openid</code> and <code>email</code> scopes, and only allowed addresses can use it.</p>
 
 <h2>Get started</h2>
 <p>Read the <a href="${REPOSITORY_URL}#readme">setup guide</a>. To learn how the app handles your data, read the <a href="/privacy">privacy policy</a>.</p>`,
 );
 
-export const PRIVACY_PAGE = page(
+export const PRIVACY_PAGE = renderPage(
   'Privacy Policy - mcp-server-gsc',
   'How mcp-server-gsc handles Google Search Console data.',
   `<h1>Privacy Policy</h1>
@@ -112,6 +125,7 @@ export const PRIVACY_PAGE = page(
 <li>Search performance data, including queries, pages, countries, devices, clicks, impressions, CTR, and position.</li>
 <li>URL inspection results and sitemap information.</li>
 </ul>
+<p>If you sign in to a hosted deployment, the server receives your Google account ID and email address. It uses them only to check whether your account is allowed.</p>
 <p>The app does not request your Google password. It does not request access to Gmail, Drive, or other Google products.</p>
 
 <h2>How the app uses data</h2>
@@ -121,7 +135,7 @@ export const PRIVACY_PAGE = page(
 <h2>Where data is stored</h2>
 <ul>
 <li><strong>Local use:</strong> OAuth login saves a refresh token and OAuth client details in a file on your computer. The app does not send this file to the maintainer.</li>
-<li><strong>Remote deployment:</strong> The Cloudflare Worker processes each request in memory and has no database. Its operator stores the service account credential and bearer token as Cloudflare secrets.</li>
+<li><strong>Remote deployment:</strong> The Cloudflare Worker processes Search Console results in memory. It stores OAuth client registrations, sign-in grants, and hashed tokens in Cloudflare KV. Your email address is stored in encrypted form in the grant. The Worker does not store the Google tokens from sign-in. Its operator stores the service account credential and OAuth client secret as Cloudflare secrets.</li>
 <li><strong>Logs:</strong> The server writes error details to its runtime log. For a remote deployment, Cloudflare processes that log.</li>
 </ul>
 <p>The app does not store Search Console results.</p>
@@ -136,6 +150,7 @@ export const PRIVACY_PAGE = page(
 <ul>
 <li>To remove a local login, run <code>mcp-server-gsc auth logout</code>.</li>
 <li>To revoke access, open your <a href="${PERMISSIONS_URL}">Google Account permissions</a>.</li>
+<li>A hosted sign-in expires after 30 days. The operator can end access at once by removing your email address from the allowlist.</li>
 <li>To remove a service account, delete its user entry in Search Console.</li>
 </ul>
 

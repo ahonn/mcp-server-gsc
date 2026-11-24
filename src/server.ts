@@ -81,7 +81,7 @@ export function createServer(credentials: string, options: ServerOptions = {}): 
   const server = new Server(
     {
       name: 'mcp-server-gsc',
-      version: '0.3.0',
+      version: '0.4.0',
     },
     {
       capabilities: {

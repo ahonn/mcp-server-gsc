@@ -221,6 +221,13 @@ test('prompts render with dates that account for the data delay', async () => {
   assert.throws(() => renderPrompt('diagnose_traffic_drop', { siteUrl: 'x', days: '0' }));
 });
 
+test('package, manifest, and server versions match', async () => {
+  const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+  const version = read('../package.json').version;
+  assert.equal(read('../manifest.json').version, version);
+  assert.equal((await connect({})).getServerVersion()?.version, version);
+});
+
 test('the MCPB manifest lists every tool', () => {
   const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
   assert.deepEqual(

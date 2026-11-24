@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "mcp-server-gsc",
   "display_name": "Google Search Console",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Query, compare, and diagnose Google Search Console data from an MCP client",
   "author": {
     "name": "Yuexun Jiang",
